@@ -1,68 +1,69 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   FileText,
   Upload,
   Plus,
   Sparkles,
+  Check,
+  X,
+  ArrowLeft,
+  Trash2,
+  Download,
+  AlertCircle
 } from "lucide-react";
 import Card from "../components/Card";
 import EmptyState from "../components/EmptyState";
 import Badge from "../components/Badge";
 import Button from "../components/Button";
 import AskForraa from "../components/AskForraa";
+import * as api from "../api/client";
 
 function Reports() {
   const fileInputRef = useRef(null);
   const [reports, setReports] = useState([]);
   const [showUpload, setShowUpload] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-
-  /*
-   * Clean callbacks for future backend integration.
-   *
-   * Upload flow:
-   *   1. handleUpload(files)  → POST /api/reports/upload
-   *   2. Backend extracts text, parses structure
-   *   3. handleAnalyze(id)    → POST /api/reports/:id/analyze
-   *   4. Backend runs AI analysis, returns insights
-   *   5. handleView(id)       → Navigate to report detail
-   *   6. handleDelete(id)     → DELETE /api/reports/:id
-   */
-
-  const handleUpload = useCallback(async (files) => {
-    // Future: const formData = new FormData();
-    //         files.forEach(f => formData.append('files', f));
-    //         const response = await fetch('/api/reports/upload', {
-    //           method: 'POST', body: formData
-    //         });
-    //         const data = await response.json();
-    //         setReports(prev => [...prev, ...data.reports]);
-    console.log("[Forraa] Upload files:", files.map((f) => f.name));
+  const [uploading, setUploading] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState(null);
+  const [reportDetails, setReportDetails] = useState(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  
+  const loadReports = useCallback(async () => {
+    try {
+      const data = await api.fetchReports();
+      setReports(data);
+    } catch (err) {
+      console.error("Failed to load reports", err);
+    }
   }, []);
 
-  const handleAnalyze = useCallback(async (reportId) => {
-    // Future: const result = await fetch(`/api/reports/${reportId}/analyze`, {
-    //           method: 'POST'
-    //         });
-    //         setReports(prev =>
-    //           prev.map(r => r.id === reportId
-    //             ? { ...r, status: 'analyzed' }
-    //             : r
-    //           )
-    //         );
-    console.log("[Forraa] Analyze report:", reportId);
-  }, []);
+  useEffect(() => {
+    loadReports();
+    // Poll for updates if any are processing
+    const interval = setInterval(() => {
+      setReports((current) => {
+        if (current.some(r => r.status === 'uploaded' || r.status === 'processing')) {
+          loadReports();
+        }
+        return current;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [loadReports]);
 
-  const handleView = useCallback((reportId) => {
-    // Future: navigate to /reports/:id detail view
-    console.log("[Forraa] View report:", reportId);
-  }, []);
-
-  const handleDelete = useCallback(async (reportId) => {
-    // Future: await fetch(`/api/reports/${reportId}`, { method: 'DELETE' });
-    //         setReports(prev => prev.filter(r => r.id !== reportId));
-    console.log("[Forraa] Delete report:", reportId);
-  }, []);
+  const handleUpload = async (files) => {
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      await api.uploadReport(files);
+      setShowUpload(false);
+      await loadReports();
+    } catch (err) {
+      alert("Failed to upload report: " + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -90,6 +91,148 @@ function Reports() {
     }
   };
 
+  const handleDelete = async (reportId) => {
+    if (!confirm("Are you sure you want to delete this report?")) return;
+    try {
+      await api.deleteReport(reportId);
+      if (selectedReportId === reportId) {
+         setSelectedReportId(null);
+         setReportDetails(null);
+      }
+      await loadReports();
+    } catch (err) {
+      alert("Failed to delete report.");
+    }
+  };
+
+  const loadReportDetails = async (id) => {
+    setSelectedReportId(id);
+    setLoadingDetails(true);
+    try {
+      const details = await api.fetchReportDetails(id);
+      setReportDetails(details);
+    } catch (err) {
+      alert("Failed to load report details.");
+      setSelectedReportId(null);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const handleConfirmExtraction = async (extId) => {
+    try {
+      await api.confirmExtraction(selectedReportId, extId);
+      // Update local state
+      setReportDetails(prev => ({
+         ...prev,
+         extractions: prev.extractions.map(e => e.id === extId ? {...e, status: 'confirmed'} : e)
+      }));
+      loadReports(); // update main list status
+    } catch (err) {
+      alert("Failed to confirm: " + err.message);
+    }
+  };
+
+  const handleRejectExtraction = async (extId) => {
+    try {
+      await api.rejectExtraction(selectedReportId, extId);
+      setReportDetails(prev => ({
+         ...prev,
+         extractions: prev.extractions.map(e => e.id === extId ? {...e, status: 'rejected'} : e)
+      }));
+      loadReports(); // update main list status
+    } catch (err) {
+      alert("Failed to reject: " + err.message);
+    }
+  };
+
+  // Detailed View
+  if (selectedReportId) {
+    return (
+       <div className="page">
+          <div className="page-header" style={{flexDirection: 'row', alignItems: 'center', gap: '1rem', justifyContent: 'flex-start'}}>
+            <Button variant="ghost" onClick={() => setSelectedReportId(null)} icon={<ArrowLeft size={16}/>}>Back</Button>
+            <div>
+              <h1 className="page-header__title">{reportDetails?.filename || "Loading..."}</h1>
+              <p className="page-header__desc">Review extracted health insights.</p>
+            </div>
+          </div>
+          
+          {loadingDetails ? (
+            <p>Loading details...</p>
+          ) : reportDetails ? (
+            <div style={{display: 'flex', flexDirection: 'column', gap: '1.5rem'}}>
+               <Card padding="lg">
+                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
+                    <div>
+                      <h3 style={{marginTop: 0}}>Report Summary</h3>
+                      <p style={{whiteSpace: 'pre-wrap', lineHeight: '1.5', color: 'var(--text-secondary)'}}>{reportDetails.summary}</p>
+                    </div>
+                    <div style={{display: 'flex', gap: '0.5rem'}}>
+                      {reportDetails.download_url && (
+                        <a href={reportDetails.download_url} target="_blank" rel="noreferrer" style={{textDecoration: 'none'}}>
+                           <Button variant="outline" icon={<Download size={14}/>}>Download</Button>
+                        </a>
+                      )}
+                      <Button variant="ghost" onClick={() => handleDelete(reportDetails.id)} icon={<Trash2 size={14}/>}>Delete</Button>
+                    </div>
+                 </div>
+               </Card>
+               
+               <div>
+                  <h3>Extracted Findings</h3>
+                  {reportDetails.extractions.length === 0 ? (
+                     <p>No specific structured data was extracted from this report.</p>
+                  ) : (
+                     <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                        {reportDetails.extractions.map(ext => (
+                           <Card key={ext.id} padding="md">
+                              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                 <div>
+                                    <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem'}}>
+                                       <Badge variant="primary" style={{textTransform: 'capitalize'}}>{ext.entity_type}</Badge>
+                                       {ext.status === 'pending_review' && <Badge variant="warning">Needs Review</Badge>}
+                                       {ext.status === 'confirmed' && <Badge variant="success">Confirmed</Badge>}
+                                       {ext.status === 'rejected' && <Badge variant="danger">Rejected</Badge>}
+                                    </div>
+                                    <div style={{fontFamily: 'monospace', fontSize: '0.9rem', backgroundColor: 'var(--bg-secondary)', padding: '0.5rem', borderRadius: '4px'}}>
+                                       {JSON.stringify(ext.data, null, 2)}
+                                    </div>
+                                    {ext.source_text && (
+                                       <p style={{fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.5rem'}}>
+                                          <AlertCircle size={12} style={{display: 'inline', marginRight: '4px'}}/>
+                                          Source: "{ext.source_text}"
+                                       </p>
+                                    )}
+                                 </div>
+                                 {ext.status === 'pending_review' && (
+                                    <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem'}}>
+                                       <Button variant="primary" icon={<Check size={14}/>} onClick={() => handleConfirmExtraction(ext.id)}>Confirm</Button>
+                                       <Button variant="outline" icon={<X size={14}/>} onClick={() => handleRejectExtraction(ext.id)}>Reject</Button>
+                                    </div>
+                                 )}
+                              </div>
+                           </Card>
+                        ))}
+                     </div>
+                  )}
+               </div>
+
+               <div className="page-section">
+                 <AskForraa 
+                    placeholder={`Ask Forraa about ${reportDetails.filename}...`} 
+                    activeReportId={reportDetails.id}
+                 />
+               </div>
+            </div>
+          ) : (
+             <p>Report not found.</p>
+          )}
+       </div>
+    );
+  }
+
+  // List View
   return (
     <div className="page">
       <div className="page-header">
@@ -118,15 +261,15 @@ function Reports() {
           onClick={() => fileInputRef.current?.click()}
         >
           <Upload size={24} />
-          <strong>Drop files here or click to upload</strong>
+          <strong>{uploading ? "Uploading..." : "Drop files here or click to upload"}</strong>
           <p>PDF, lab reports, prescriptions, medical documents</p>
           <input
             ref={fileInputRef}
             type="file"
-            multiple
-            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+            accept=".pdf,.jpg,.jpeg,.png"
             onChange={handleFileSelect}
             style={{ display: "none" }}
+            disabled={uploading}
           />
         </div>
       )}
@@ -151,36 +294,30 @@ function Reports() {
                 <FileText size={18} />
               </div>
               <div className="report-card__info">
-                <strong>{report.name}</strong>
+                <strong>{report.filename}</strong>
                 <span>
-                  {report.date} · {report.type}
+                  {new Date(report.created_at).toLocaleDateString()}
                 </span>
               </div>
               <Badge
                 variant={
-                  report.status === "analyzed" ? "success" : "pending"
+                  report.status === "processed" ? "success" 
+                  : report.status === "needs_review" ? "warning"
+                  : report.status === "failed" ? "danger"
+                  : "pending"
                 }
               >
-                {report.status === "analyzed" ? "Analyzed" : "Pending"}
+                {report.status.replace("_", " ")}
               </Badge>
               <div className="report-card__actions">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleView(report.id)}
+                  onClick={() => loadReportDetails(report.id)}
                 >
                   View
                 </Button>
-                {report.status !== "analyzed" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={<Sparkles size={14} />}
-                    onClick={() => handleAnalyze(report.id)}
-                  >
-                    Analyze
-                  </Button>
-                )}
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(report.id)} icon={<Trash2 size={14}/>}>Delete</Button>
               </div>
             </div>
           ))}

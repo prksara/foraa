@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   User,
   Heart,
@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import SettingsSection from "../components/SettingsSection";
 import SettingsRow from "../components/SettingsRow";
+import * as api from "../api/client";
 
 const sections = [
   { id: "account", label: "Account", icon: User },
@@ -35,6 +36,14 @@ function Settings() {
   const [notifProduct, setNotifProduct] = useState(true);
   const [notifHealth, setNotifHealth] = useState(false);
   const [aiDataPref, setAiDataPref] = useState(true);
+  const [profile, setProfile] = useState(null);
+
+  useEffect(() => {
+    api.fetchHealthProfile().then(p => {
+      if (p) setProfile(p);
+      else setProfile({});
+    }).catch(console.error);
+  }, []);
 
   return (
     <div className="page">
@@ -87,22 +96,27 @@ function Settings() {
           {activeSection === "health" && (
             <SettingsSection
               title="Health Profile"
-              description="Personal health information that helps Forraa provide better guidance."
+              description="Personal health information that helps Forraa provide better guidance. You can also view this in My Health."
             >
               <SettingsRow
                 label="Date of birth"
                 description="Used for age-appropriate recommendations"
               >
-                <input type="date" />
+                <input 
+                  type="date" 
+                  value={profile?.date_of_birth || ""}
+                  onChange={e => setProfile({...profile, date_of_birth: e.target.value})}
+                />
               </SettingsRow>
               <SettingsRow
                 label="Biological sex"
                 description="Relevant for health reference ranges"
               >
-                <select defaultValue="">
-                  <option value="" disabled>
-                    Select
-                  </option>
+                <select 
+                  value={profile?.sex || ""}
+                  onChange={e => setProfile({...profile, sex: e.target.value})}
+                >
+                  <option value="" disabled>Select</option>
                   <option value="female">Female</option>
                   <option value="male">Male</option>
                   <option value="other">Other</option>
@@ -110,11 +124,27 @@ function Settings() {
                 </select>
               </SettingsRow>
               <SettingsRow
-                label="Known conditions"
-                description="Help Forraa understand your health context"
+                label="Blood Type"
+                description="Your blood group"
               >
-                <input type="text" placeholder="e.g. Asthma, Diabetes" />
+                <input 
+                  type="text" 
+                  placeholder="e.g. O+, A-"
+                  value={profile?.blood_type || ""}
+                  onChange={e => setProfile({...profile, blood_type: e.target.value})}
+                />
               </SettingsRow>
+              <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                <button 
+                   className="btn btn--primary" 
+                   onClick={async () => {
+                     await api.updateHealthProfile(profile);
+                     alert("Profile saved!");
+                   }}
+                >
+                  Save Profile
+                </button>
+              </div>
             </SettingsSection>
           )}
 

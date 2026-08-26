@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   Sparkles,
   Home,
@@ -9,8 +9,10 @@ import {
   Sun,
   Settings,
   User,
+  LogOut,
 } from "lucide-react";
 import MobileNav from "./MobileNav";
+import { useAuth } from "../contexts/AuthContext";
 
 const mainNav = [
   { name: "Home", path: "/", icon: Home },
@@ -22,6 +24,14 @@ const mainNav = [
 ];
 
 function Layout({ children }) {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -69,12 +79,19 @@ function Layout({ children }) {
 
         <div className="sidebar-profile">
           <div className="sidebar-profile-avatar">
-            <User size={16} />
+            {user?.user_metadata?.avatar_url ? (
+               <img src={user.user_metadata.avatar_url} alt="Avatar" style={{width: '100%', height: '100%', borderRadius: '50%'}}/>
+            ) : (
+               <User size={16} />
+            )}
           </div>
           <div className="sidebar-profile-info">
-            <strong>Your Profile</strong>
+            <strong>{user?.user_metadata?.full_name || user?.email || 'Your Profile'}</strong>
             <span>Health workspace</span>
           </div>
+          <button onClick={handleSignOut} className="sidebar-logout" style={{ background: 'none', border: 'none', color: 'var(--color-text-secondary)', cursor: 'pointer', padding: '4px' }} title="Sign Out">
+            <LogOut size={16} />
+          </button>
         </div>
       </aside>
 

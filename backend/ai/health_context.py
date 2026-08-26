@@ -1,0 +1,88 @@
+from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from database.models import User, HealthProfile, HealthCondition, Allergy, Medication, Lifestyle, HealthGoal, Measurement, HealthDocument
+
+class HealthContextBuilder:
+    def __init__(self, db: AsyncSession, user: User):
+        self.db = db
+        self.user = user
+
+    async def build_context(self, user_message: str, active_report_id: Optional[str] = None) -> str:
+        """
+        Builds a structured XML-delimited health context based on the user's data.
+        In the future, this can use keyword/topic relevance matching based on `user_message`.
+        For now, we fetch the active/relevant data and format it.
+        """
+        # Fetch data
+        profile_stmt = select(HealthProfile).where(HealthProfile.user_id == self.user.id)
+        profile_res = await self.db.execute(profile_stmt)
+        profile: Optional[HealthProfile] = profile_res.scalar_one_or_none()
+
+        conditions_stmt = select(HealthCondition).where(HealthCondition.user_id == self.user.id, HealthCondition.status == 'active')
+        conditions_res = await self.db.execute(conditions_stmt)
+        conditions = conditions_res.scalars().all()
+
+        allergies_stmt = select(Allergy).where(Allergy.user_id == self.user.id, Allergy.status == 'active')
+        allergies_res = await self.db.execute(allergies_stmt)
+        allergies = allergies_res.scalars().all()
+
+        meds_stmt = select(Medication).where(Medication.user_id == self.user.id, Medication.status == 'active')
+        meds_res = await self.db.execute(meds_stmt)
+        meds = meds_res.scalars().all()
+        
+        goals_stmt = select(HealthGoal).where(HealthGoal.user_id == self.user.id, HealthGoal.status == 'active')
+        goals_res = await self.db.execute(goals_stmt)
+        goals = goals_res.scalars().all()
+        
+        # Build XML
+        xml_parts = ["<health_context>"]
+        xml_parts.append("<guidelines>")
+        xml_parts.append("State information as user-provided context, not absolute medical truth. Do not treat incomplete or unverified records as clinical diagnoses. Use this context to personalize your responses safely.")
+        xml_parts.append("</guidelines>")
+        
+        if profile:
+            xml_parts.append("<profile>")
+            if profile.sex: xml_parts.append(f"  <sex>{profile.sex}</sex>")
+            if profile.blood_type: xml_parts.append(f"  <blood_type>{profile.blood_type}</blood_type>")
+            if profile.height and profile.height_unit: xml_parts.append(f"  <height>{profile.height} {profile.height_unit}</height>")
+            if profile.weight and profile.weight_unit: xml_parts.append(f"  <weight>{profile.weight} {profile.weight_unit}</weight>")
+            xml_parts.append("</profile>")
+        
+        if conditions:
+            xml_parts.append("<active_conditions>")
+            for c in conditions:
+                xml_parts.append(f"  <condition name=\"{c.name}\" source=\"{c.source}\"/>")
+            xml_parts.append("</active_conditions>")
+            
+        if allergies:
+            xml_parts.append("<allergies>")
+            for a in allergies:
+                xml_parts.append(f"  <allergy substance=\"{a.substance}\" severity=\"{a.severity or 'unknown'}\" source=\"{a.source}\"/>")
+            xml_parts.append("</allergies>")
+            
+        if meds:
+            xml_parts.append("<active_medications>")
+            for m in meds:
+                xml_parts.append(f"  <medication name=\"{m.name}\" dose=\"{m.dose or ''} {m.dose_unit or ''}\" source=\"{m.source}\"/>")
+            xml_parts.append("</active_medications>")
+            
+        if goals:
+            xml_parts.append("<active_goals>")
+            for g in goals:
+                xml_parts.append(f"  <goal title=\"{g.title}\" category=\"{g.category or 'general'}\"/>")
+            xml_parts.append("</active_goals>")
+            
+        if active_report_id:
+            report_stmt = select(HealthDocument).where(HealthDocument.id == active_report_id, HealthDocument.user_id == self.user.id)
+            report_res = await self.db.execute(report_stmt)
+            report = report_res.scalar_one_or_none()
+            if report and report.summary:
+                xml_parts.append("<active_report>")
+                xml_parts.append(f"  <filename>{report.filename}</filename>")
+                xml_parts.append(f"  <summary>{report.summary}</summary>")
+                xml_parts.append("</active_report>")
+
+        xml_parts.append("</health_context>")
+        return "\n".join(xml_parts)

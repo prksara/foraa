@@ -5,17 +5,17 @@ import { Sparkles, ArrowRight } from "lucide-react";
 function AskForraa({
   placeholder = "Ask Forraa anything about your health...",
   suggestions = [],
+  activeReportId = null,
 }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 
   const handleSubmit = () => {
     if (!query.trim()) {
-      navigate("/assistant");
+      navigate("/assistant", { state: { activeReportId } });
       return;
     }
-    // Navigate to assistant — future: pass query as state
-    navigate("/assistant");
+    navigate("/assistant", { state: { query, activeReportId } });
     setQuery("");
   };
 
