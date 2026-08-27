@@ -3,10 +3,7 @@ function ProgressBar({ value = 0, className = "" }) {
 
   return (
     <div className={`progress-bar ${className}`}>
-      <div
-        className="progress-bar__fill"
-        style={{ width: `${percent}%` }}
-      />
+      <div className="progress-bar__fill" style={{ width: `${percent}%` }} />
     </div>
   );
 }

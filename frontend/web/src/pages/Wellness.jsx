@@ -1,10 +1,4 @@
-import {
-  Moon,
-  Activity,
-  Battery,
-  Brain,
-  CalendarCheck,
-} from "lucide-react";
+import { Moon, Activity, Battery, Brain, CalendarCheck } from "lucide-react";
 import Card from "../components/Card";
 import SectionHeader from "../components/SectionHeader";
 import HealthMetric from "../components/HealthMetric";
@@ -30,9 +24,7 @@ function Wellness() {
       <div className="page-header">
         <div>
           <h1 className="page-header__title">Wellness</h1>
-          <p className="page-header__desc">
-            Your mind, body, and rest.
-          </p>
+          <p className="page-header__desc">Your mind, body, and rest.</p>
         </div>
       </div>
 

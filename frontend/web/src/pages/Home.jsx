@@ -68,7 +68,12 @@ function Home() {
     api.fetchHealthSummary().then(setSummary).catch(console.error);
   }, []);
 
-  const hasData = summary && (summary.active_conditions_count > 0 || summary.active_medications_count > 0 || summary.allergies_count > 0 || summary.active_goals_count > 0);
+  const hasData =
+    summary &&
+    (summary.active_conditions_count > 0 ||
+      summary.active_medications_count > 0 ||
+      summary.allergies_count > 0 ||
+      summary.active_goals_count > 0);
 
   return (
     <div className="page">
@@ -90,9 +95,7 @@ function Home() {
               <action.icon size={18} />
             </div>
             <div>
-              <strong className="home-quick-card__title">
-                {action.title}
-              </strong>
+              <strong className="home-quick-card__title">{action.title}</strong>
               <p className="home-quick-card__desc">{action.desc}</p>
             </div>
           </button>
@@ -104,7 +107,7 @@ function Home() {
       {hasData ? (
         <div className="health-metrics-grid">
           <Card padding="md" onClick={() => navigate("/health")}>
-            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <Activity size={20} />
               <div>
                 <strong>Active Conditions</strong>
@@ -113,7 +116,7 @@ function Home() {
             </div>
           </Card>
           <Card padding="md" onClick={() => navigate("/health")}>
-            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <Heart size={20} />
               <div>
                 <strong>Active Medications</strong>
@@ -122,7 +125,7 @@ function Home() {
             </div>
           </Card>
           <Card padding="md" onClick={() => navigate("/health")}>
-            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <Sun size={20} />
               <div>
                 <strong>Active Goals</strong>

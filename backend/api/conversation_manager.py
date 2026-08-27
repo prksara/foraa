@@ -14,7 +14,6 @@ class ConversationManager:
         db.add(conv)
         await db.commit()
         await db.refresh(conv)
-        conv.messages = []
         return conv
 
     async def get_conversation(self, db: AsyncSession, conv_id: str, user_id: str) -> Optional[Conversation]:
@@ -43,6 +42,16 @@ class ConversationManager:
             await db.commit()
             return True
         return False
+        
+    async def rename_conversation(self, db: AsyncSession, conv_id: str, user_id: str, title: str) -> Optional[Conversation]:
+        conv = await self.get_conversation(db, conv_id, user_id)
+        if conv:
+            conv.title = title
+            conv.updated_at = datetime.datetime.utcnow()
+            await db.commit()
+            await db.refresh(conv)
+            return conv
+        return None
 
     async def add_message(self, db: AsyncSession, conv_id: str, user_id: str, role: str, content: str) -> Optional[Message]:
         conv = await self.get_conversation(db, conv_id, user_id)
@@ -54,11 +63,15 @@ class ConversationManager:
             role=role,
             content=content
         )
-        db.add(msg)
+        # Add to the loaded relationship list. This updates the DB on commit 
+        # AND keeps the in-memory list synchronized for immediate reuse.
+        conv.messages.append(msg)
         
         conv.updated_at = datetime.datetime.utcnow()
         
-        if len(conv.messages) == 0 and role == "user":
+        # Note: Because we appended it, length will be > 0. 
+        # To check if it's the first message, length will be exactly 1.
+        if len(conv.messages) == 1 and role == "user":
             conv.title = content[:30] + ("..." if len(content) > 30 else "")
             
         await db.commit()

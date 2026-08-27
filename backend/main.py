@@ -22,6 +22,10 @@ from database.models import User
 from ai.health_context import HealthContextBuilder
 from api.health import router as health_router
 from api.reports import router as reports_router
+from services.evidence_retrieval import EvidenceRetrievalService
+from ai.intent import IntentAnalyzer
+from services.memory_extraction import MemoryExtractor
+import asyncio
 
 # --------------------------------------------------
 # Logging
@@ -83,7 +87,7 @@ app.add_middleware(
 # --------------------------------------------------
 
 _ai_service: AIService | None = None
-
+_intent_analyzer: IntentAnalyzer | None = None
 
 def _get_ai_service() -> AIService:
     """Return the singleton AIService, creating it on first call."""
@@ -91,6 +95,12 @@ def _get_ai_service() -> AIService:
     if _ai_service is None:
         _ai_service = AIService()
     return _ai_service
+
+def _get_intent_analyzer() -> IntentAnalyzer:
+    global _intent_analyzer
+    if _intent_analyzer is None:
+        _intent_analyzer = IntentAnalyzer()
+    return _intent_analyzer
 
 
 # --------------------------------------------------
@@ -115,6 +125,9 @@ class ConversationSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+class ConversationUpdate(BaseModel):
+    title: str
 
 class ChatRequest(BaseModel):
     message: str
@@ -175,6 +188,18 @@ async def get_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found or unauthorized")
     return conv
 
+@app.put("/conversations/{conv_id}", response_model=ConversationSchema)
+async def update_conversation(
+    conv_id: str,
+    update_data: ConversationUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    conv = await conv_manager.rename_conversation(db, conv_id, user_id=user.id, title=update_data.title)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found or unauthorized")
+    return conv
+
 @app.delete("/conversations/{conv_id}")
 async def delete_conversation(
     conv_id: str, 
@@ -214,19 +239,59 @@ async def chat_stream(
         # Reload conversation to get fresh messages list for context
         conv = await conv_manager.get_conversation(db, conv_id, user_id=user.id)
         
-        # 3. Build Context
+        # 3. Analyze Intent
+        intent_analyzer = _get_intent_analyzer()
+        # Run sync API call in thread pool to not block asyncio loop
+        intent = await asyncio.to_thread(intent_analyzer.analyze, request.message)
+        logger.info("Chat Intent: %s", intent)
+
+        # 3.5 Run memory extraction in background task (fire and forget)
+        # Using the user message to extract permanent health facts asynchronously
+        async def background_memory_extraction(msg_content, uid, msg_id):
+            async for safe_db in get_db():
+                extractor = MemoryExtractor(_get_ai_service())
+                await extractor.extract_health_events(msg_content, uid, msg_id, safe_db)
+                break
+                
+        asyncio.create_task(background_memory_extraction(request.message, user.id, conv_id))
+
+        # 4. Retrieve Medical Evidence (only if needed)
+        evidence_pack = None
+        if intent.get("needs_evidence", True):
+            retrieval_service = EvidenceRetrievalService(db)
+            evidence_pack = await retrieval_service.search(request.message, limit=3)
+
+        # 5. Build Context
         context_messages = [{"role": msg.role, "content": msg.content} for msg in conv.messages]
         
         health_builder = HealthContextBuilder(db, user)
-        health_context_str = await health_builder.build_context(request.message, active_report_id=request.active_report_id)
+        # We can pass intent to the builder to filter context later if we want
+        health_context_str = await health_builder.build_context(
+            request.message, 
+            active_report_id=request.active_report_id,
+            evidence_pack=evidence_pack,
+            intent=intent
+        )
         context_messages.insert(0, {"role": "system", "content": health_context_str})
         
-        # 4. Stream response and capture full reply
+        # 6. Stream response and capture full reply
         async def event_generator():
             full_reply = ""
             try:
-                # Yield SSE format with conversation_id
-                yield f"data: {json.dumps({'conversation_id': conv_id})}\n\n"
+                # Yield SSE format with conversation_id and evidence metadata for frontend
+                metadata_payload = {'conversation_id': conv_id}
+                if evidence_pack and evidence_pack.retrieved_items:
+                    metadata_payload['evidence_metadata'] = [
+                        {
+                            "source_name": item.source_name,
+                            "title": item.title,
+                            "url": item.url,
+                            "publication_date": item.publication_date,
+                            "citation": item.citation_reference
+                        } for item in evidence_pack.retrieved_items
+                    ]
+                
+                yield f"data: {json.dumps(metadata_payload)}\n\n"
                 
                 for chunk in service.generate_stream(context_messages):
                     if chunk:

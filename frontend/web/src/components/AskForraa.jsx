@@ -29,7 +29,23 @@ function AskForraa({
   return (
     <div className="ask-forraa">
       <div className="ask-forraa__input-row">
-        <Sparkles size={18} className="ask-forraa__sparkle" />
+        <div
+          className="ask-forraa__sparkle"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "20px",
+            height: "20px",
+            padding: "0",
+          }}
+        >
+          <img
+            src="/foraa%20logo.png"
+            alt="Foraa"
+            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+          />
+        </div>
         <input
           type="text"
           value={query}

@@ -7,9 +7,7 @@ function TimelineItem({ date, title, description, icon }) {
       <div className="timeline-item__content">
         <span className="timeline-item__date">{date}</span>
         <strong className="timeline-item__title">{title}</strong>
-        {description && (
-          <p className="timeline-item__desc">{description}</p>
-        )}
+        {description && <p className="timeline-item__desc">{description}</p>}
       </div>
     </div>
   );

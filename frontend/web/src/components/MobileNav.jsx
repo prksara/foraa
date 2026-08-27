@@ -1,11 +1,5 @@
 import { NavLink } from "react-router-dom";
-import {
-  Home,
-  Sparkles,
-  Heart,
-  FileText,
-  Settings,
-} from "lucide-react";
+import { Home, Sparkles, Heart, FileText, Settings } from "lucide-react";
 
 const navItems = [
   { path: "/", icon: Home, label: "Home" },

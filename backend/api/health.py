@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from database.database import get_db
 from database.models import (
     User, HealthProfile, HealthCondition, Allergy, Medication,
-    Lifestyle, HealthGoal, Measurement
+    Lifestyle, HealthGoal, Measurement, HealthEvent
 )
 from auth.security import get_current_user
 
@@ -135,6 +135,24 @@ class MeasurementResponse(MeasurementBase):
     id: str
     measured_at: datetime.datetime
     created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+class HealthEventBase(BaseModel):
+    event_type: str
+    title: str
+    description: Optional[str] = None
+    event_date: Optional[datetime.datetime] = None
+    source_type: str = "user"
+    source_id: Optional[str] = None
+    confidence: float = 1.0
+    structured_data: Optional[dict] = None
+
+class HealthEventResponse(HealthEventBase):
+    id: str
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
 
     class Config:
         from_attributes = True
@@ -309,6 +327,27 @@ async def create_measurement(data: MeasurementBase, db: AsyncSession = Depends(g
 @router.delete("/measurements/{item_id}")
 async def delete_measurement(item_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     return await delete_item(db, user.id, item_id, Measurement)
+
+# Timeline (Health Events)
+@router.get("/timeline", response_model=List[HealthEventResponse])
+async def get_timeline(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    stmt = select(HealthEvent).where(HealthEvent.user_id == user.id).order_by(HealthEvent.event_date.desc())
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+@router.post("/timeline", response_model=HealthEventResponse)
+async def create_timeline_event(data: HealthEventBase, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    if not data.event_date:
+        data.event_date = datetime.datetime.utcnow()
+    return await create_item(db, user.id, HealthEvent, data)
+
+@router.put("/timeline/{item_id}", response_model=HealthEventResponse)
+async def update_timeline_event(item_id: str, data: HealthEventBase, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    return await update_item(db, user.id, item_id, HealthEvent, data)
+
+@router.delete("/timeline/{item_id}")
+async def delete_timeline_event(item_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    return await delete_item(db, user.id, item_id, HealthEvent)
 
 # Summary
 @router.get("/summary", response_model=HealthSummaryResponse)

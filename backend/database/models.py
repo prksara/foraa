@@ -2,8 +2,11 @@ import datetime
 import uuid
 from typing import Optional
 
-from sqlalchemy import String, Text, ForeignKey, DateTime, Float, Date, Boolean, JSON
+from sqlalchemy import String, Text, ForeignKey, DateTime, Float, Date, Boolean, JSON, Integer, Column
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
+from pgvector.sqlalchemy import Vector
+from sqlalchemy.dialects.postgresql import TSVECTOR
 
 class Base(DeclarativeBase):
     pass
@@ -32,6 +35,7 @@ class User(Base):
     measurements: Mapped[list["Measurement"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     documents: Mapped[list["HealthDocument"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     document_extractions: Mapped[list["DocumentExtraction"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    health_events: Mapped[list["HealthEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Conversation(Base):
@@ -221,3 +225,83 @@ class DocumentExtraction(Base):
 
     user: Mapped["User"] = relationship(back_populates="document_extractions")
     document: Mapped["HealthDocument"] = relationship(back_populates="extractions")
+
+
+# --------------------------------------------------
+# Phase 5A: Trusted Medical Evidence
+# --------------------------------------------------
+
+class MedicalSource(Base):
+    __tablename__ = "medical_sources"
+    
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    organization: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    source_type: Mapped[Optional[str]] = mapped_column(String, nullable=True) # e.g. guideline, academic, clinical_reference
+    base_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    trust_level: Mapped[str] = mapped_column(String, default="high") # high, medium
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    
+    documents: Mapped[list["KnowledgeDocument"]] = relationship(back_populates="source", cascade="all, delete-orphan")
+
+class KnowledgeDocument(Base):
+    __tablename__ = "knowledge_documents"
+    
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    source_id: Mapped[str] = mapped_column(ForeignKey("medical_sources.id", ondelete="CASCADE"), index=True)
+    
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    document_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    publication_date: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String, unique=True, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="active")
+    
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    
+    source: Mapped["MedicalSource"] = relationship(back_populates="documents")
+    chunks: Mapped[list["KnowledgeChunk"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
+    
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    document_id: Mapped[str] = mapped_column(ForeignKey("knowledge_documents.id", ondelete="CASCADE"), index=True)
+    
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    section_title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    chunk_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    
+    # HuggingFace all-MiniLM-L6-v2 uses 384 dimensions
+    # Assuming Vector is imported from pgvector.sqlalchemy
+    embedding: Mapped[list[float]] = mapped_column(Vector(384))
+    
+    # Exact keyword matching
+    search_vector: Mapped[str] = mapped_column(TSVECTOR, nullable=True)
+    
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    
+    document: Mapped["KnowledgeDocument"] = relationship(back_populates="chunks")
+
+class HealthEvent(Base):
+    __tablename__ = "health_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String, nullable=False) # symptom, diagnosis, measurement, report, consultation, etc.
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    event_date: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    source_type: Mapped[str] = mapped_column(String, default="user") # conversation, report, user
+    source_id: Mapped[Optional[str]] = mapped_column(String, nullable=True) # message id, report id
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    structured_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="health_events")

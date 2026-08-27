@@ -4,13 +4,20 @@ from database.models import Base
 
 logger = logging.getLogger("foraa.database")
 
-# Using a local SQLite database for ease of development.
-SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///./foraa.db"
+import os
+from dotenv import load_dotenv
+
+# Load the root .env file
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
+load_dotenv(env_path)
+
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+if not SQLALCHEMY_DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set. Please configure it in .env")
 
 # Create async engine
 engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False}, # Needed for SQLite
     echo=False, # Set to True for SQL query logging
 )
 

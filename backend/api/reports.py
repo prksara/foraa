@@ -5,11 +5,10 @@ from typing import List, Dict
 import datetime
 
 from database.database import get_db
-from database.models import User, HealthDocument, DocumentExtraction, HealthCondition, Allergy, Medication, Measurement
+from database.models import User, HealthDocument, DocumentExtraction, HealthCondition, Allergy, Medication, Measurement, HealthEvent
 from auth.security import get_current_user
 from services.storage import storage_service
 from services.document_processing import ReportExtractionService
-from main import _get_ai_service
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -29,6 +28,7 @@ async def process_document_background(
         await db.commit()
 
         # Process
+        from main import _get_ai_service
         ai_service = _get_ai_service()
         extraction_service = ReportExtractionService(ai_service=ai_service)
         
@@ -244,6 +244,30 @@ async def confirm_extraction(
             raise ValueError(f"Unknown entity type {ext.entity_type}")
 
         db.add(record)
+        
+        # Phase 5: Also create a timeline HealthEvent
+        event_title = f"Report Extraction: {ext.entity_type.capitalize()}"
+        if ext.entity_type == "condition":
+            event_title = f"Condition: {ext.data.get('name', 'Unknown')}"
+        elif ext.entity_type == "allergy":
+            event_title = f"Allergy: {ext.data.get('substance', 'Unknown')}"
+        elif ext.entity_type == "medication":
+            event_title = f"Medication: {ext.data.get('name', 'Unknown')}"
+        elif ext.entity_type == "measurement":
+            event_title = f"Measurement: {ext.data.get('type', 'Unknown')} {ext.data.get('value', '')} {ext.data.get('unit', '')}"
+
+        event = HealthEvent(
+            user_id=user.id,
+            event_type=ext.entity_type,
+            title=event_title,
+            description=f"Extracted from report {doc.filename if 'doc' in locals() and hasattr(doc, 'filename') else ''}",
+            source_type="report",
+            source_id=document_id,
+            confidence=1.0, # confirmed
+            structured_data=ext.data
+        )
+        db.add(event)
+        
         ext.status = "confirmed"
 
         # Check if all extractions for this document are processed
