@@ -22,6 +22,7 @@ from database.models import User
 from ai.health_context import HealthContextBuilder
 from api.health import router as health_router
 from api.reports import router as reports_router
+from api.settings import router as settings_router
 from services.evidence_retrieval import EvidenceRetrievalService
 from ai.intent import IntentAnalyzer
 from services.memory_extraction import MemoryExtractor
@@ -157,8 +158,9 @@ async def health():
         "status": "ok",
     }
 
-app.include_router(health_router)
-app.include_router(reports_router)
+app.include_router(health_router, prefix="/api")
+app.include_router(reports_router, prefix="/api")
+app.include_router(settings_router, prefix="/api")
 
 
 # Conversation Management Routes
@@ -239,66 +241,148 @@ async def chat_stream(
         # Reload conversation to get fresh messages list for context
         conv = await conv_manager.get_conversation(db, conv_id, user_id=user.id)
         
-        # 3. Analyze Intent
-        intent_analyzer = _get_intent_analyzer()
-        # Run sync API call in thread pool to not block asyncio loop
-        intent = await asyncio.to_thread(intent_analyzer.analyze, request.message)
-        logger.info("Chat Intent: %s", intent)
-
-        # 3.5 Run memory extraction in background task (fire and forget)
-        # Using the user message to extract permanent health facts asynchronously
-        async def background_memory_extraction(msg_content, uid, msg_id):
-            async for safe_db in get_db():
-                extractor = MemoryExtractor(_get_ai_service())
-                await extractor.extract_health_events(msg_content, uid, msg_id, safe_db)
-                break
-                
-        asyncio.create_task(background_memory_extraction(request.message, user.id, conv_id))
-
-        # 4. Retrieve Medical Evidence (only if needed)
-        evidence_pack = None
-        if intent.get("needs_evidence", True):
-            retrieval_service = EvidenceRetrievalService(db)
-            evidence_pack = await retrieval_service.search(request.message, limit=3)
-
-        # 5. Build Context
-        context_messages = [{"role": msg.role, "content": msg.content} for msg in conv.messages]
-        
+        # 3. Build preliminary basic context for the reasoning engine
         health_builder = HealthContextBuilder(db, user)
-        # We can pass intent to the builder to filter context later if we want
-        health_context_str = await health_builder.build_context(
-            request.message, 
-            active_report_id=request.active_report_id,
-            evidence_pack=evidence_pack,
-            intent=intent
-        )
-        context_messages.insert(0, {"role": "system", "content": health_context_str})
-        
-        # 6. Stream response and capture full reply
+        base_context = await health_builder.build_context(request.message, active_report_id=request.active_report_id)
+
+        # 4. Stream response and execute reasoning pipeline concurrently
         async def event_generator():
             full_reply = ""
             try:
-                # Yield SSE format with conversation_id and evidence metadata for frontend
+                # Yield SSE format with conversation_id
                 metadata_payload = {'conversation_id': conv_id}
-                if evidence_pack and evidence_pack.retrieved_items:
-                    metadata_payload['evidence_metadata'] = [
-                        {
-                            "source_name": item.source_name,
-                            "title": item.title,
-                            "url": item.url,
-                            "publication_date": item.publication_date,
-                            "citation": item.citation_reference
-                        } for item in evidence_pack.retrieved_items
-                    ]
-                
                 yield f"data: {json.dumps(metadata_payload)}\n\n"
+                
+                # Callback to emit reasoning states
+                async def yield_status(msg: str):
+                    await asyncio.sleep(0) # Yield control
+                    # Not using yield here because it's inside a nested function,
+                    # but we can mutate a queue or just let it pass to the generator.
+                    # Wait, nested yield doesn't work that way. 
+                    pass
+
+                # We must yield directly from the main generator loop, so we can't use a callback easily
+                # without an asyncio.Queue. Let's use a queue to bridge the engine's async emissions.
+                queue = asyncio.Queue()
+                
+                async def yield_status_callback(msg: str):
+                    await queue.put({"reasoning_status": msg})
+                    
+                # Instantiate ReasoningEngine and State
+                from reasoning.engine import ReasoningEngine
+                from reasoning.schemas import ReasoningState
+                import uuid
+                
+                state = ReasoningState(
+                    request_id=str(uuid.uuid4()),
+                    user_id=str(user.id),
+                    conversation_id=str(conv_id),
+                    message=request.message
+                )
+                engine = ReasoningEngine()
+
+                # Run reasoning in a task so we can stream from the queue simultaneously
+                async def run_reasoning():
+                    try:
+                        # Retrieval
+                        evidence_pack = None
+                        evidence_text = ""
+                        
+                        # First classify to know if we need evidence
+                        state.intent = await asyncio.to_thread(engine.classifier.classify, state.message)
+                        
+                        if state.intent.needs_evidence:
+                            await queue.put({"reasoning_status": "Searching medical knowledge base..."})
+                            retrieval_service = EvidenceRetrievalService(db)
+                            evidence_pack = await retrieval_service.search(request.message, limit=5)
+                            
+                            from services.reranking import Reranker
+                            reranker = Reranker(service)
+                            evidence_pack.retrieved_items = await asyncio.to_thread(
+                                reranker.rerank, request.message, evidence_pack.retrieved_items
+                            )
+                            evidence_pack.retrieved_items = evidence_pack.retrieved_items[:3]
+                            evidence_pack.retrieval_metadata["reranked"] = True
+                            state.evidence_gathered = True
+                            
+                            if evidence_pack.retrieved_items:
+                                evidence_text = "\n".join([item.content for item in evidence_pack.retrieved_items])
+                                
+                                # Send evidence metadata down the pipe
+                                await queue.put({
+                                    "evidence_metadata": [
+                                        {
+                                            "source_name": item.source_name,
+                                            "title": item.title,
+                                            "url": item.url,
+                                            "publication_date": item.publication_date,
+                                            "citation": item.citation_reference
+                                        } for item in evidence_pack.retrieved_items
+                                    ]
+                                })
+
+                        # Execute the rest of the pipeline
+                        final_state = await engine.execute_reasoning_pipeline(
+                            state, base_context, evidence_text, yield_status_callback
+                        )
+                        
+                        # Build Final Context based on filtered keys
+                        # We pass the final_state to filter the context appropriately
+                        final_context = await health_builder.build_context(
+                            request.message, 
+                            active_report_id=request.active_report_id,
+                            evidence_pack=evidence_pack,
+                            intent=final_state.intent.model_dump() if final_state.intent else None
+                        )
+                        
+                        await queue.put({"final_context": final_context, "state": final_state})
+                    except Exception as e:
+                        logger.error(f"Reasoning task failed: {e}")
+                        await queue.put({"error": str(e)})
+
+                reasoning_task = asyncio.create_task(run_reasoning())
+                
+                final_context = base_context
+                
+                # Consume queue until reasoning is done
+                while not reasoning_task.done() or not queue.empty():
+                    try:
+                        # Wait for item or task completion
+                        msg = await asyncio.wait_for(queue.get(), timeout=0.1)
+                        if "final_context" in msg:
+                            final_context = msg["final_context"]
+                            break # Reasoning done
+                        elif "error" in msg:
+                            yield f"data: {json.dumps({'error': msg['error']})}\n\n"
+                            break
+                        else:
+                            yield f"data: {json.dumps(msg)}\n\n"
+                    except asyncio.TimeoutError:
+                        continue
+                        
+                # 3.5 Run memory extraction in background task
+                async def background_memory_extraction(msg_content, uid, msg_id):
+                    async for safe_db in get_db():
+                        extractor = MemoryExtractor(service)
+                        await extractor.extract_health_events(msg_content, uid, msg_id, safe_db)
+                        break
+                asyncio.create_task(background_memory_extraction(request.message, user.id, conv_id))
+
+                # Clear reasoning status in frontend before text generation
+                yield f"data: {json.dumps({'reasoning_status': None})}\n\n"
+
+                # 5. Generate Text
+                context_messages = [{"role": msg.role, "content": msg.content} for msg in conv.messages]
+                context_messages.insert(0, {"role": "system", "content": final_context})
                 
                 for chunk in service.generate_stream(context_messages):
                     if chunk:
                         full_reply += chunk
                         yield f"data: {json.dumps({'content': chunk})}\n\n"
                 
-                # After stream completes, save assistant message safely
+                # After stream completes, validate response?
+                # (Ideally we'd validate buffer before sending, but this is a stream. For now we just log it.)
+                
                 if full_reply:
                     async for safe_db in get_db():
                         await conv_manager.add_message(safe_db, conv_id, user_id=user.id, role="assistant", content=full_reply)

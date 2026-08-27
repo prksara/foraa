@@ -29,25 +29,16 @@ function Settings() {
   const { success, error } = useToast();
   const [activeSection, setActiveSection] = useState("account");
 
-  // Local Settings (persisted to localStorage)
-  const [notifProduct, setNotifProduct] = useState(
-    () => localStorage.getItem("foraa_notifProduct") !== "false",
-  );
-  const [notifHealth, setNotifHealth] = useState(
-    () => localStorage.getItem("foraa_notifHealth") === "true",
-  );
-  const [aiDataPref, setAiDataPref] = useState(
-    () => localStorage.getItem("foraa_aiDataPref") !== "false",
-  );
-  const [dataRetention, setDataRetention] = useState(
-    () => localStorage.getItem("foraa_dataRetention") || "90",
-  );
-  const [docStorage, setDocStorage] = useState(
-    () => localStorage.getItem("foraa_docStorage") !== "false",
-  );
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("foraa_theme") || "system",
-  );
+  // Preferences Data (from API)
+  const [preferences, setPreferences] = useState({
+    notif_product: true,
+    notif_health: true,
+    ai_data_pref: true,
+    data_retention: "90",
+    doc_storage: true,
+    theme: "system",
+  });
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
 
   // Profile Data
   const [profile, setProfile] = useState({
@@ -74,26 +65,43 @@ function Settings() {
       });
   }, []);
 
-  // Save local settings whenever they change
   useEffect(() => {
-    localStorage.setItem("foraa_notifProduct", notifProduct);
-    localStorage.setItem("foraa_notifHealth", notifHealth);
-    localStorage.setItem("foraa_aiDataPref", aiDataPref);
-    localStorage.setItem("foraa_dataRetention", dataRetention);
-    localStorage.setItem("foraa_docStorage", docStorage);
-    localStorage.setItem("foraa_theme", theme);
+    api
+      .fetchPreferences()
+      .then((p) => {
+        if (p) setPreferences(p);
+        setPrefsLoaded(true);
+      })
+      .catch((e) => {
+        console.error(e);
+        error("Failed to load preferences");
+      });
+  }, []);
+
+  // Save preferences and apply theme whenever they change
+  useEffect(() => {
+    if (!prefsLoaded) return;
 
     // Apply theme
     if (
-      theme === "dark" ||
-      (theme === "system" &&
+      preferences.theme === "dark" ||
+      (preferences.theme === "system" &&
         window.matchMedia("(prefers-color-scheme: dark)").matches)
     ) {
       document.body.classList.add("dark-theme");
     } else {
       document.body.classList.remove("dark-theme");
     }
-  }, [notifProduct, notifHealth, aiDataPref, dataRetention, docStorage, theme]);
+
+    // Save to API
+    api.updatePreferences(preferences).catch(e => {
+        console.error("Failed to save preferences", e);
+    });
+  }, [preferences, prefsLoaded]);
+
+  const updatePref = (key, value) => {
+    setPreferences((prev) => ({ ...prev, [key]: value }));
+  };
 
   const handleSaveProfile = async () => {
     setIsSaving(true);
@@ -230,15 +238,15 @@ function Settings() {
                 label="AI data preferences"
                 description="Allow Forraa to use your health data for personalized responses"
               >
-                <Toggle active={aiDataPref} onChange={setAiDataPref} />
+                <Toggle active={preferences.ai_data_pref} onChange={(v) => updatePref("ai_data_pref", v)} />
               </SettingsRow>
               <SettingsRow
                 label="Data retention"
                 description="How long your conversation history is stored"
               >
                 <select
-                  value={dataRetention}
-                  onChange={(e) => setDataRetention(e.target.value)}
+                  value={preferences.data_retention}
+                  onChange={(e) => updatePref("data_retention", e.target.value)}
                 >
                   <option value="30">30 days</option>
                   <option value="90">90 days</option>
@@ -250,7 +258,7 @@ function Settings() {
                 label="Document storage"
                 description="Keep uploaded reports and documents"
               >
-                <Toggle active={docStorage} onChange={setDocStorage} />
+                <Toggle active={preferences.doc_storage} onChange={(v) => updatePref("doc_storage", v)} />
               </SettingsRow>
             </SettingsSection>
           )}
@@ -264,13 +272,13 @@ function Settings() {
                 label="Product updates"
                 description="New features and improvements"
               >
-                <Toggle active={notifProduct} onChange={setNotifProduct} />
+                <Toggle active={preferences.notif_product} onChange={(v) => updatePref("notif_product", v)} />
               </SettingsRow>
               <SettingsRow
                 label="Health reminders"
                 description="Medication reminders, check-up prompts"
               >
-                <Toggle active={notifHealth} onChange={setNotifHealth} />
+                <Toggle active={preferences.notif_health} onChange={(v) => updatePref("notif_health", v)} />
               </SettingsRow>
             </SettingsSection>
           )}
@@ -285,8 +293,8 @@ function Settings() {
                 description="Choose your preferred color scheme"
               >
                 <select
-                  value={theme}
-                  onChange={(e) => setTheme(e.target.value)}
+                  value={preferences.theme}
+                  onChange={(e) => updatePref("theme", e.target.value)}
                 >
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>

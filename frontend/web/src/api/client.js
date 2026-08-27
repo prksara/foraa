@@ -294,6 +294,20 @@ export async function deleteMeasurement(id) {
   return request(`/health/measurements/${id}`, { method: "DELETE" });
 }
 
+// ----------------------------------------------------
+// Settings / Preferences endpoints
+// ----------------------------------------------------
+export async function fetchPreferences() {
+  return request("/settings/preferences");
+}
+
+export async function updatePreferences(data) {
+  return request("/settings/preferences", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 // Timeline
 export async function fetchTimeline() {
   return request("/health/timeline");

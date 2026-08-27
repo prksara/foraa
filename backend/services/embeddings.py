@@ -47,9 +47,31 @@ class MockEmbeddingProvider(EmbeddingProvider):
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         return [await self.embed_text(t) for t in texts]
 
+class LocalEmbeddingProvider(EmbeddingProvider):
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+        from sentence_transformers import SentenceTransformer
+        import asyncio
+        self.model = SentenceTransformer(model_name)
+        
+    async def embed_text(self, text: str) -> List[float]:
+        import asyncio
+        # Run synchronously wrapped in a small thread or just run it directly (blocking briefly is ok for small texts)
+        embeddings = self.model.encode(text)
+        return embeddings.tolist()
+
+    async def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        import asyncio
+        embeddings = self.model.encode(texts)
+        return embeddings.tolist()
+
 def get_embedding_provider() -> EmbeddingProvider:
     token = os.environ.get("HF_TOKEN")
-    if not token:
-        print("WARNING: HF_TOKEN not set. Using MockEmbeddingProvider.")
+    if token:
+        return HuggingFaceAPIEmbeddingProvider(token=token)
+        
+    try:
+        print("Initializing LocalEmbeddingProvider...")
+        return LocalEmbeddingProvider()
+    except ImportError:
+        print("WARNING: sentence-transformers not installed and HF_TOKEN not set. Using MockEmbeddingProvider.")
         return MockEmbeddingProvider(dim=384)
-    return HuggingFaceAPIEmbeddingProvider(token=token)

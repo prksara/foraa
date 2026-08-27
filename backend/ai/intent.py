@@ -10,18 +10,18 @@ logger = logging.getLogger("foraa.ai.intent")
 INTENT_PROMPT = """You are a fast intent classifier for a health AI.
 Given the user's message, output a JSON object with the following keys:
 - "categories": A list of strings. Choose from: [general_health, symptoms, nutrition, fitness, medications, lab_results, conditions, prevention, mental_wellbeing, report_interpretation, personal_health, emergency_or_urgent, greeting, other]
-- "needs_evidence": A boolean. True if the query asks for medical facts, guidelines, or conditions where searching a medical database is useful. False for greetings, small talk, or purely personal UI questions.
+- "needs_evidence": A boolean. True ONLY if the query explicitly asks about a specific disease, medical condition, treatment, drug, or makes a factual medical claim requiring scientific evidence to verify. Set to False for greetings, general chatting, small talk, personal UI questions, or basic wellness questions that don't need clinical references.
 - "needs_profile": A boolean. True if the query requires knowing the user's personal context (allergies, medications, goals, age, sex) to answer properly.
 
 Only output valid JSON. Do not include markdown formatting or explanations.
 
 Example 1:
-User: "Hi there!"
+User: "Hi there! How are you?"
 Output: {"categories": ["greeting"], "needs_evidence": false, "needs_profile": false}
 
 Example 2:
 User: "Based on my peanut allergy, what protein can I eat?"
-Output: {"categories": ["nutrition", "personal_health"], "needs_evidence": true, "needs_profile": true}
+Output: {"categories": ["nutrition", "personal_health"], "needs_evidence": false, "needs_profile": true}
 
 Example 3:
 User: "What is the recommended dose of Aspirin for a heart attack?"

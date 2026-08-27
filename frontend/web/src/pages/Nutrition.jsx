@@ -183,7 +183,7 @@ function Nutrition() {
           </div>
         )}
 
-        <Card padding="lg">
+
           {todaysMeasurements.length === 0 ? (
             <EmptyState
               icon={<UtensilsCrossed size={24} />}
@@ -209,7 +209,7 @@ function Nutrition() {
               ))}
             </ul>
           )}
-        </Card>
+
       </div>
 
       <div className="page-section">

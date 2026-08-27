@@ -47,9 +47,9 @@ class EvidenceRetrievalService:
             keyword_search AS (
                 SELECT 
                     c.id, 
-                    ts_rank(c.search_vector, plainto_tsquery('english', :query)) AS keyword_score
+                    ts_rank(to_tsvector('english', c.content), plainto_tsquery('english', :query)) AS keyword_score
                 FROM knowledge_chunks c
-                WHERE c.search_vector @@ plainto_tsquery('english', :query)
+                WHERE to_tsvector('english', c.content) @@ plainto_tsquery('english', :query)
                 ORDER BY keyword_score DESC
                 LIMIT :limit * 2
             )

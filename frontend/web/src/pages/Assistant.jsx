@@ -1,44 +1,33 @@
 import { useState, useEffect, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Send,
-  Sparkles,
   User,
   StopCircle,
   RefreshCw,
   Copy,
-  Plus,
   MessageSquare,
-  Trash2,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   FileText,
-  Edit2,
 } from "lucide-react";
 import {
   streamChatMessage,
-  fetchConversations,
-  createConversation,
-  deleteConversation,
   fetchConversation,
-  updateConversation,
 } from "../api/client";
 import ReactMarkdown from "react-markdown";
-import ConfirmModal from "../components/ConfirmModal";
+import { useChat } from "../contexts/ChatContext";
 
 function Assistant() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { pendingAssistantMessage, clearPendingAssistantMessage, loadConversations } = useChat();
+
   const [message, setMessage] = useState("");
-  const [activeConversationId, setActiveConversationId] = useState(null);
-  const [conversations, setConversations] = useState([]);
   const [messages, setMessages] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [copiedIndex, setCopiedIndex] = useState(null);
-  const [editingConvId, setEditingConvId] = useState(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [convToDelete, setConvToDelete] = useState(null);
 
   const location = useLocation();
   const activeReportIdRef = useRef(location.state?.activeReportId || null);
@@ -56,93 +45,41 @@ function Assistant() {
     scrollToBottom();
   }, [messages, loading]);
 
-  // Fetch conversations on mount
+  // Handle URL ID changes
   useEffect(() => {
-    loadConversations();
-  }, []);
-
-  const loadConversations = async () => {
-    try {
-      const data = await fetchConversations();
-      setConversations(data);
-      if (data.length > 0 && !activeConversationId) {
-        // Optionally auto-select most recent
-      }
-      // Auto send initial query from navigation state if present
-      if (location.state?.query && !activeConversationId) {
-        // Wait a tick for states to settle
-        setTimeout(() => handleSend(location.state.query), 100);
-        // Clear state so it doesn't fire again on refresh
-        window.history.replaceState({}, document.title);
-      }
-    } catch (err) {
-      console.error("Failed to load conversations", err);
-    }
-  };
-
-  const handleNewChat = async () => {
-    try {
-      const conv = await createConversation();
-      setConversations([conv, ...conversations]);
-      setActiveConversationId(conv.id);
+    if (id) {
+      handleSelectConversation(id);
+    } else {
+      // New Chat state
       setMessages([]);
       setMessage("");
       setError(null);
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    } catch (err) {
-      console.error("Failed to create conversation", err);
+      if (textareaRef.current) textareaRef.current.focus();
     }
-  };
+  }, [id]);
 
-  const handleSelectConversation = async (id) => {
+  // Handle pending message from Home
+  useEffect(() => {
+    if (pendingAssistantMessage) {
+      const msg = pendingAssistantMessage;
+      clearPendingAssistantMessage();
+      // Wait a tick to ensure component is fully mounted/state is clean
+      setTimeout(() => handleSend(msg), 50);
+    }
+  }, [pendingAssistantMessage, id]);
+
+  const handleSelectConversation = async (convId) => {
     if (loading && abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     try {
-      setActiveConversationId(id);
-      const conv = await fetchConversation(id);
+      const conv = await fetchConversation(convId);
       setMessages(conv.messages || []);
       setError(null);
       setMessage("");
     } catch (err) {
       console.error("Failed to load conversation details", err);
-    }
-  };
-
-  const handleDeleteConversation = async () => {
-    if (!convToDelete) return;
-    try {
-      await deleteConversation(convToDelete);
-      setConversations(conversations.filter((c) => c.id !== convToDelete));
-      if (activeConversationId === convToDelete) {
-        setActiveConversationId(null);
-        setMessages([]);
-      }
-    } catch (err) {
-      console.error("Failed to delete conversation", err);
-    } finally {
-      setConvToDelete(null);
-    }
-  };
-
-  const handleRenameSubmit = async (id) => {
-    if (!editTitle.trim()) {
-      setEditingConvId(null);
-      return;
-    }
-    try {
-      await updateConversation(id, { title: editTitle });
-      setConversations(
-        conversations.map((c) =>
-          c.id === id ? { ...c, title: editTitle } : c,
-        ),
-      );
-    } catch (err) {
-      console.error("Failed to rename conversation", err);
-    } finally {
-      setEditingConvId(null);
+      setError("Unable to load conversation.");
     }
   };
 
@@ -150,18 +87,14 @@ function Assistant() {
     const text = customMessage || message.trim();
     if (!text || loading) return;
 
-    let convId = activeConversationId;
-    if (!convId) {
-      // Need to wait for backend to return conversation ID during stream
-    }
+    let currentConvId = id;
 
     // Add user message to UI immediately
     const updatedMessages = [...messages, { role: "user", content: text }];
 
     setMessages(updatedMessages);
-    if (!customMessage) setMessage(""); // Only clear input if not a retry
+    if (!customMessage) setMessage("");
 
-    // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -172,22 +105,33 @@ function Assistant() {
     // Add empty assistant message placeholder
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
     let assistantContent = "";
+    let receivedNewConvId = null;
 
     abortControllerRef.current = new AbortController();
 
     try {
       await streamChatMessage(
         text,
-        convId,
+        currentConvId, // passes undefined/null if New Chat
         activeReportIdRef.current,
         (data) => {
-          if (data.conversation_id) {
-            convId = data.conversation_id;
-            setActiveConversationId(convId);
-            // We should probably refresh the sidebar title at some point
+          if (data.conversation_id && !currentConvId) {
+            receivedNewConvId = data.conversation_id;
+            currentConvId = data.conversation_id;
+            // Silently update URL without triggering a remount/re-fetch
+            navigate(`/assistant/${data.conversation_id}`, { replace: true });
+          }
+          if (data.reasoning_status !== undefined) {
+            setMessages((prev) => {
+              const newMsgs = [...prev];
+              newMsgs[newMsgs.length - 1] = {
+                ...newMsgs[newMsgs.length - 1],
+                reasoningStatus: data.reasoning_status,
+              };
+              return newMsgs;
+            });
           }
           if (data.evidence_metadata) {
-            // Store the metadata on the current assistant message
             setMessages((prev) => {
               const newMsgs = [...prev];
               newMsgs[newMsgs.length - 1] = {
@@ -199,7 +143,6 @@ function Assistant() {
           }
           if (data.content) {
             assistantContent += data.content;
-            // Update the last message in state
             setMessages((prev) => {
               const newMsgs = [...prev];
               newMsgs[newMsgs.length - 1] = {
@@ -217,12 +160,12 @@ function Assistant() {
         abortControllerRef.current.signal,
       );
 
-      // Refresh conversation list after generation to get the potentially updated title
+      // Refresh list to show new conversation / auto-generated title
       loadConversations();
     } catch (err) {
       if (err.name === "AbortError") {
-        // Expected when user clicks Stop
         console.log("Stream aborted");
+        loadConversations(); // Update list anyway in case conv was created
       } else {
         const errorMessage =
           err.message === "Failed to fetch"
@@ -231,7 +174,6 @@ function Assistant() {
 
         setError("Forraa couldn't complete that response. Please try again.");
 
-        // If it failed immediately and we have no content
         if (!assistantContent) {
           setMessages((prev) => {
             const newMsgs = [...prev];
@@ -247,6 +189,7 @@ function Assistant() {
     } finally {
       setLoading(false);
       abortControllerRef.current = null;
+      if (textareaRef.current) textareaRef.current.focus();
     }
   };
 
@@ -262,8 +205,17 @@ function Assistant() {
       .reverse()
       .find((m) => m.role === "user");
     if (lastUserMessage) {
-      // Remove the failed assistant message if it exists
-      setMessages(messages.filter((m) => !m.isError));
+      // Safely slice the messages array up to the point BEFORE the last failed/stopped assistant response
+      // But actually, just removing the last assistant error message is fine if it was an error.
+      // If we retry, we can strip the last assistant message and resend the user message.
+      const msgsWithoutLastAssistant = [...messages];
+      if (msgsWithoutLastAssistant[msgsWithoutLastAssistant.length - 1].role === "assistant") {
+        msgsWithoutLastAssistant.pop();
+      }
+      if (msgsWithoutLastAssistant[msgsWithoutLastAssistant.length - 1].role === "user") {
+          msgsWithoutLastAssistant.pop(); // Also remove the user message so we don't duplicate it in the UI when handleSend adds it again
+      }
+      setMessages(msgsWithoutLastAssistant);
       handleSend(lastUserMessage.content);
     }
   };
@@ -277,115 +229,22 @@ function Assistant() {
   const handleKeyDown = (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      handleSend();
+      if (!loading && abortControllerRef.current === null) {
+        handleSend();
+      }
     }
   };
 
   const handleInput = (e) => {
     setMessage(e.target.value);
     if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = "24px";
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
     }
   };
 
   return (
-    <div className="assistant-page has-sidebar">
-      {/* Conversation Sidebar */}
-      <div className="conversation-sidebar">
-        <button className="new-chat-btn" onClick={handleNewChat}>
-          <Plus size={18} />
-          New Chat
-        </button>
-
-        <div className="conversation-list">
-          <span className="list-label">Recent</span>
-          {conversations.map((conv) => (
-            <div
-              key={conv.id}
-              className={`conversation-item ${activeConversationId === conv.id ? "active" : ""}`}
-              onClick={() => {
-                if (editingConvId !== conv.id)
-                  handleSelectConversation(conv.id);
-              }}
-            >
-              <MessageSquare size={16} className="conv-icon" />
-              {editingConvId === conv.id ? (
-                <input
-                  autoFocus
-                  className="conv-title-input"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  onBlur={() => handleRenameSubmit(conv.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleRenameSubmit(conv.id);
-                    if (e.key === "Escape") setEditingConvId(null);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    background: "transparent",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                    padding: "2px 4px",
-                    borderRadius: "4px",
-                  }}
-                />
-              ) : (
-                <span className="conv-title">{conv.title}</span>
-              )}
-
-              {!editingConvId && (
-                <div
-                  className="conv-actions"
-                  style={{ display: "flex", gap: "4px" }}
-                >
-                  <button
-                    className="edit-conv-btn"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "inherit",
-                      cursor: "pointer",
-                      padding: "2px",
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingConvId(conv.id);
-                      setEditTitle(conv.title);
-                    }}
-                    title="Rename chat"
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                  <button
-                    className="delete-conv-btn"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "inherit",
-                      cursor: "pointer",
-                      padding: "2px",
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setConvToDelete(conv.id);
-                    }}
-                    title="Delete chat"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-          {conversations.length === 0 && (
-            <div className="empty-conversations">No recent chats</div>
-          )}
-        </div>
-      </div>
-
+    <div className="assistant-page">
       {/* Main Chat Area */}
       <div className="assistant-main">
         <div className="assistant-header">
@@ -428,6 +287,37 @@ function Assistant() {
                   Tell me what you're experiencing, what you're trying to
                   improve, or ask a health question.
                 </p>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center", marginTop: "24px", maxWidth: "600px", margin: "24px auto 0" }}>
+                  {[
+                    "Understand a lab report",
+                    "Improve my nutrition",
+                    "Explain my symptoms",
+                    "Review my health history"
+                  ].map((suggestion, i) => (
+                    <button 
+                      key={i} 
+                      onClick={() => handleSend(suggestion)}
+                      style={{
+                        padding: "8px 16px",
+                        background: "var(--color-surface)",
+                        border: "1px solid var(--color-border)",
+                        borderRadius: "var(--radius-full)",
+                        color: "var(--color-text)",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        transition: "all var(--ease-fast)"
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.borderColor = "var(--color-accent)";
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.borderColor = "var(--color-border)";
+                      }}
+                    >
+                      "{suggestion}"
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -460,7 +350,16 @@ function Assistant() {
                   >
                     {item.role === "assistant" && !item.isError ? (
                       <>
-                        {item.content ? (
+                        {item.reasoningStatus && !item.content ? (
+                          <div className="reasoning-status" style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--color-text-muted)", fontSize: "14px", fontStyle: "italic" }}>
+                            <div className="typing-dots" style={{ margin: 0, padding: 0 }}>
+                              <div className="typing-dot" style={{ background: "var(--color-text-muted)", width: "4px", height: "4px" }}></div>
+                              <div className="typing-dot" style={{ background: "var(--color-text-muted)", width: "4px", height: "4px" }}></div>
+                              <div className="typing-dot" style={{ background: "var(--color-text-muted)", width: "4px", height: "4px" }}></div>
+                            </div>
+                            {item.reasoningStatus}
+                          </div>
+                        ) : item.content ? (
                           <ReactMarkdown>{item.content}</ReactMarkdown>
                         ) : loading && index === messages.length - 1 ? (
                           <div className="typing-dots">
@@ -612,16 +511,6 @@ function Assistant() {
           </div>
         </div>
       </div>
-
-      <ConfirmModal
-        isOpen={!!convToDelete}
-        onClose={() => setConvToDelete(null)}
-        onConfirm={handleDeleteConversation}
-        title="Delete Chat"
-        message="Are you sure you want to delete this conversation? This action cannot be undone."
-        confirmText="Delete"
-        isDestructive={true}
-      />
     </div>
   );
 }

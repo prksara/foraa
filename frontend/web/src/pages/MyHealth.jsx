@@ -248,7 +248,7 @@ function MyHealth() {
       )}
 
       {activeTab === "conditions" && (
-        <Card padding="lg">
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <div
             style={{
               display: "flex",
@@ -383,11 +383,11 @@ function MyHealth() {
               ))}
             </ul>
           )}
-        </Card>
+        </div>
       )}
 
       {activeTab === "allergies" && (
-        <Card padding="lg">
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <div
             style={{
               display: "flex",
@@ -519,11 +519,11 @@ function MyHealth() {
               ))}
             </ul>
           )}
-        </Card>
+        </div>
       )}
 
       {activeTab === "medications" && (
-        <Card padding="lg">
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <div
             style={{
               display: "flex",
@@ -667,11 +667,11 @@ function MyHealth() {
               ))}
             </ul>
           )}
-        </Card>
+        </div>
       )}
 
       {activeTab === "goals" && (
-        <Card padding="lg">
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <div
             style={{
               display: "flex",
@@ -788,11 +788,11 @@ function MyHealth() {
               ))}
             </ul>
           )}
-        </Card>
+        </div>
       )}
 
       {activeTab === "measurements" && (
-        <Card padding="lg">
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <SectionHeader title="Measurements" />
           {measurements.length === 0 ? (
             <EmptyState
@@ -816,11 +816,11 @@ function MyHealth() {
               ))}
             </ul>
           )}
-        </Card>
+        </div>
       )}
 
       {activeTab === "timeline" && (
-        <Card padding="lg">
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <SectionHeader title="Health Timeline" />
           {timeline.length === 0 ? (
             <EmptyState
@@ -921,7 +921,7 @@ function MyHealth() {
               ))}
             </div>
           )}
-        </Card>
+        </div>
       )}
     </div>
   );

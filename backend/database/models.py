@@ -36,6 +36,7 @@ class User(Base):
     documents: Mapped[list["HealthDocument"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     document_extractions: Mapped[list["DocumentExtraction"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     health_events: Mapped[list["HealthEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    preferences: Mapped[Optional["UserPreferences"]] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
 
 
 class Conversation(Base):
@@ -82,6 +83,23 @@ class HealthProfile(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="health_profile")
+
+
+class UserPreferences(Base):
+    __tablename__ = "user_preferences"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    notif_product: Mapped[bool] = mapped_column(Boolean, default=True)
+    notif_health: Mapped[bool] = mapped_column(Boolean, default=True)
+    ai_data_pref: Mapped[bool] = mapped_column(Boolean, default=True)
+    data_retention: Mapped[str] = mapped_column(String, default="90")
+    doc_storage: Mapped[bool] = mapped_column(Boolean, default=True)
+    theme: Mapped[str] = mapped_column(String, default="system")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="preferences")
 
 
 class HealthCondition(Base):

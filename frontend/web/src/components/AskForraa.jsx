@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sparkles, ArrowRight } from "lucide-react";
+import { useChat } from "../contexts/ChatContext";
 
 function AskForraa({
   placeholder = "Ask Forraa anything about your health...",
@@ -8,14 +9,16 @@ function AskForraa({
   activeReportId = null,
 }) {
   const navigate = useNavigate();
+  const { setPendingAssistantMessage } = useChat();
   const [query, setQuery] = useState("");
 
   const handleSubmit = () => {
     if (!query.trim()) {
-      navigate("/assistant", { state: { activeReportId } });
+      navigate("/assistant");
       return;
     }
-    navigate("/assistant", { state: { query, activeReportId } });
+    setPendingAssistantMessage(query);
+    navigate("/assistant");
     setQuery("");
   };
 
@@ -35,8 +38,8 @@ function AskForraa({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            width: "20px",
-            height: "20px",
+            width: "32px",
+            height: "32px",
             padding: "0",
           }}
         >
@@ -68,7 +71,10 @@ function AskForraa({
             <button
               key={i}
               className="ask-forraa__suggestion"
-              onClick={() => navigate("/assistant")}
+              onClick={() => {
+                setPendingAssistantMessage(s);
+                navigate("/assistant");
+              }}
             >
               {s}
             </button>

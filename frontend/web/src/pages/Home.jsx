@@ -79,74 +79,105 @@ function Home() {
     <div className="page">
       <div className="home-greeting">
         <h1 className="home-greeting__title">{getGreeting()}</h1>
-        <p className="home-greeting__sub">Your health, understood.</p>
+        <p className="home-greeting__sub">Your health command center.</p>
       </div>
 
       <AskForraa placeholder="Ask Forraa anything about your health..." />
 
-      <div className="home-quick-actions">
+      <div className="home-quick-actions" style={{ display: "flex", gap: "12px", overflowX: "auto", paddingBottom: "8px", marginBottom: "32px", scrollbarWidth: "none" }}>
         {quickActions.map((action, i) => (
           <button
             key={i}
-            className="home-quick-card"
+            className="home-quick-action-pill"
             onClick={() => navigate(action.path)}
+            style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-full)", whiteSpace: "nowrap", transition: "all var(--ease-fast)" }}
           >
-            <div className="home-quick-card__icon">
-              <action.icon size={18} />
-            </div>
-            <div>
-              <strong className="home-quick-card__title">{action.title}</strong>
-              <p className="home-quick-card__desc">{action.desc}</p>
-            </div>
+            <action.icon size={14} style={{ color: "var(--color-accent)" }} />
+            <span style={{ fontSize: "13px", fontWeight: "var(--weight-medium)" }}>{action.title}</span>
           </button>
         ))}
       </div>
 
-      <SectionHeader title="Health Overview" />
-
-      {hasData ? (
-        <div className="health-metrics-grid">
-          <Card padding="md" onClick={() => navigate("/health")}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Activity size={20} />
-              <div>
-                <strong>Active Conditions</strong>
-                <div>{summary.active_conditions_count}</div>
+      <div className="home-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", alignItems: "start" }}>
+        {/* Left Column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          <section>
+            <SectionHeader title="Health Overview" />
+            {hasData ? (
+              <div className="health-metrics-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}>
+                <Card padding="md" onClick={() => navigate("/health")}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <Activity size={18} style={{ color: "var(--color-accent)" }} />
+                    <div>
+                      <div style={{ fontSize: "20px", fontWeight: "var(--weight-semibold)" }}>{summary.active_conditions_count}</div>
+                      <div style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>Conditions</div>
+                    </div>
+                  </div>
+                </Card>
+                <Card padding="md" onClick={() => navigate("/health")}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <Heart size={18} style={{ color: "var(--color-accent)" }} />
+                    <div>
+                      <div style={{ fontSize: "20px", fontWeight: "var(--weight-semibold)" }}>{summary.active_medications_count}</div>
+                      <div style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>Medications</div>
+                    </div>
+                  </div>
+                </Card>
+                <Card padding="md" onClick={() => navigate("/health")}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <Sun size={18} style={{ color: "var(--color-accent)" }} />
+                    <div>
+                      <div style={{ fontSize: "20px", fontWeight: "var(--weight-semibold)" }}>{summary.active_goals_count}</div>
+                      <div style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>Goals</div>
+                    </div>
+                  </div>
+                </Card>
               </div>
-            </div>
-          </Card>
-          <Card padding="md" onClick={() => navigate("/health")}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Heart size={20} />
-              <div>
-                <strong>Active Medications</strong>
-                <div>{summary.active_medications_count}</div>
-              </div>
-            </div>
-          </Card>
-          <Card padding="md" onClick={() => navigate("/health")}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Sun size={20} />
-              <div>
-                <strong>Active Goals</strong>
-                <div>{summary.active_goals_count}</div>
-              </div>
-            </div>
-          </Card>
+            ) : (
+              <Card padding="md">
+                <EmptyState
+                  icon={<Heart size={20} />}
+                  title="No health data yet"
+                  description="Connect your health information to begin."
+                  action={{
+                    label: "Get started",
+                    onClick: () => navigate("/health"),
+                  }}
+                />
+              </Card>
+            )}
+          </section>
         </div>
-      ) : (
-        <Card padding="lg">
-          <EmptyState
-            icon={<Heart size={24} />}
-            title="No health data yet"
-            description="Connect your health information or start a conversation with Forraa to begin building your health picture."
-            action={{
-              label: "Get started",
-              onClick: () => navigate("/health"),
-            }}
-          />
-        </Card>
-      )}
+
+        {/* Right Column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          <section>
+            <SectionHeader title="Recent Activity" />
+            <Card padding="md">
+              <EmptyState
+                  icon={<Activity size={20} />}
+                  title="No recent activity"
+                  description="Activity will appear here when you log health data."
+                />
+            </Card>
+          </section>
+
+          <section>
+            <SectionHeader title="Recent Reports" />
+            <Card padding="md">
+              <EmptyState
+                  icon={<FileText size={20} />}
+                  title="No recent reports"
+                  description="Upload a report to see it here."
+                  action={{
+                    label: "Upload Report",
+                    onClick: () => navigate("/reports"),
+                  }}
+                />
+            </Card>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

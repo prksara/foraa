@@ -43,13 +43,13 @@ function Wellness() {
 
       <div className="page-section">
         <SectionHeader title="Daily Habits" />
-        <Card padding="lg">
+
           <EmptyState
             icon={<CalendarCheck size={24} />}
             title="No habits tracked yet"
             description="Build your daily wellness routine. Track sleep, activity, recovery, and mindfulness to see patterns over time."
           />
-        </Card>
+
       </div>
 
       <div className="page-section">
