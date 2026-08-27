@@ -27,6 +27,12 @@ from services.evidence_retrieval import EvidenceRetrievalService
 from ai.intent import IntentAnalyzer
 from services.memory_extraction import MemoryExtractor
 import asyncio
+import time
+
+from safety import (
+    SafetyClassifier, MedicationSafetyChecker, PostGenerationValidator, SafetyLevel, ValidationResult
+)
+from database.models import SafetyEvent
 
 # --------------------------------------------------
 # Logging
@@ -268,22 +274,64 @@ async def chat_stream(
                 async def yield_status_callback(msg: str):
                     await queue.put({"reasoning_status": msg})
                     
-                # Instantiate ReasoningEngine and State
+                # Instantiate Safety & Reasoning Checkers
                 from reasoning.engine import ReasoningEngine
-                from reasoning.schemas import ReasoningState
+                from reasoning.schemas import ReasoningState, ResponsePolicy
                 import uuid
                 
+                req_id = str(uuid.uuid4())
                 state = ReasoningState(
-                    request_id=str(uuid.uuid4()),
+                    request_id=req_id,
                     user_id=str(user.id),
                     conversation_id=str(conv_id),
                     message=request.message
                 )
                 engine = ReasoningEngine()
+                
+                # Pre-Initialize safety evaluators
+                safety_classifier = SafetyClassifier()
+                med_safety = MedicationSafetyChecker()
+                post_validator = PostGenerationValidator()
 
                 # Run reasoning in a task so we can stream from the queue simultaneously
                 async def run_reasoning():
+                    start_time = time.time()
                     try:
+                        # --- PHASE 8: SAFETY PRE-CHECK ---
+                        await queue.put({"reasoning_status": "Checking safety constraints..."})
+                        safety_result = await asyncio.to_thread(safety_classifier.classify, state.message, base_context)
+                        med_result = await asyncio.to_thread(med_safety.check, state.message, base_context)
+                        
+                        latency = int((time.time() - start_time) * 1000)
+                        
+                        # Log Safety Event
+                        async for safe_db in get_db():
+                            safety_event = SafetyEvent(
+                                request_id=req_id,
+                                user_id=str(user.id),
+                                conversation_id=str(conv_id),
+                                safety_level=safety_result.level.value,
+                                detected_signals=safety_result.detected_signals + med_result.get("medication_alerts", []),
+                                latency_ms=latency
+                            )
+                            safe_db.add(safety_event)
+                            await safe_db.commit()
+                            break
+
+                        if safety_result.level in [SafetyLevel.URGENT, SafetyLevel.EMERGENCY] or not med_result["is_safe"]:
+                            logger.warning(f"Safety constraint violated. Escalating. Level: {safety_result.level}")
+                            await queue.put({"safety_escalation": {
+                                "level": safety_result.level.value,
+                                "reasons": safety_result.reasons,
+                                "alerts": med_result.get("medication_alerts", []),
+                                "recommended_action": safety_result.recommended_action
+                            }})
+                            state.response_policy = ResponsePolicy.SAFETY_ESCALATION
+                            # Return early, skip full pipeline
+                            await queue.put({"final_context": base_context, "state": state, "safety_result": safety_result})
+                            return
+
+                        # --- PHASE 7: REASONING & EVIDENCE ---
                         # Retrieval
                         evidence_pack = None
                         evidence_text = ""
@@ -343,6 +391,8 @@ async def chat_stream(
                 reasoning_task = asyncio.create_task(run_reasoning())
                 
                 final_context = base_context
+                final_state = None
+                safety_escalation_data = None
                 
                 # Consume queue until reasoning is done
                 while not reasoning_task.done() or not queue.empty():
@@ -351,7 +401,11 @@ async def chat_stream(
                         msg = await asyncio.wait_for(queue.get(), timeout=0.1)
                         if "final_context" in msg:
                             final_context = msg["final_context"]
+                            final_state = msg.get("state")
                             break # Reasoning done
+                        elif "safety_escalation" in msg:
+                            safety_escalation_data = msg["safety_escalation"]
+                            yield f"data: {json.dumps({'safety_notice': safety_escalation_data})}\n\n"
                         elif "error" in msg:
                             yield f"data: {json.dumps({'error': msg['error']})}\n\n"
                             break
@@ -380,8 +434,20 @@ async def chat_stream(
                         full_reply += chunk
                         yield f"data: {json.dumps({'content': chunk})}\n\n"
                 
-                # After stream completes, validate response?
-                # (Ideally we'd validate buffer before sending, but this is a stream. For now we just log it.)
+                # After stream completes, validate response
+                validation_result: ValidationResult = None
+                if full_reply and not safety_escalation_data:
+                    validation_result = await asyncio.to_thread(
+                        post_validator.validate, 
+                        full_reply, 
+                        final_state.evidence_metadata if final_state and hasattr(final_state, 'evidence_metadata') else []
+                    )
+                    
+                    if not validation_result.is_safe:
+                        logger.warning(f"Post-generation safety validation failed: {validation_result.rewrite_reason}")
+                        # In a real app we might redact or rewrite here, but since it's already streamed,
+                        # we can emit a correction or just log it heavily.
+                        yield f"data: {json.dumps({'validation_warning': validation_result.rewrite_reason})}\n\n"
                 
                 if full_reply:
                     async for safe_db in get_db():

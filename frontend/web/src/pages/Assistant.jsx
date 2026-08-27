@@ -131,6 +131,26 @@ function Assistant() {
               return newMsgs;
             });
           }
+          if (data.safety_notice) {
+            setMessages((prev) => {
+              const newMsgs = [...prev];
+              newMsgs[newMsgs.length - 1] = {
+                ...newMsgs[newMsgs.length - 1],
+                safetyNotice: data.safety_notice,
+              };
+              return newMsgs;
+            });
+          }
+          if (data.validation_warning) {
+            setMessages((prev) => {
+              const newMsgs = [...prev];
+              newMsgs[newMsgs.length - 1] = {
+                ...newMsgs[newMsgs.length - 1],
+                validationWarning: data.validation_warning,
+              };
+              return newMsgs;
+            });
+          }
           if (data.evidence_metadata) {
             setMessages((prev) => {
               const newMsgs = [...prev];
@@ -369,7 +389,43 @@ function Assistant() {
                           </div>
                         ) : null}
 
-                        {/* Sources Panel */}
+                        {/* Validation Warning Notice (Post-Gen) */}
+                {item.validationWarning && (
+                  <div className="safety-notice warning">
+                    <div className="safety-notice-header">
+                      <span className="safety-icon">⚠️</span>
+                      <span className="safety-title">Safety Constraint Violated</span>
+                    </div>
+                    <div className="safety-content">
+                      <p>{item.validationWarning}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Safety Escalation Notice (Pre-Gen) */}
+                {item.safetyNotice && (
+                  <div className={`safety-notice ${item.safetyNotice.level.toLowerCase()}`}>
+                    <div className="safety-notice-header">
+                      <span className="safety-icon">🚨</span>
+                      <span className="safety-title">
+                        {item.safetyNotice.level === "EMERGENCY" || item.safetyNotice.level === "URGENT" 
+                          ? "Medical Priority Alert" 
+                          : "Clinical Caution"}
+                      </span>
+                    </div>
+                    <div className="safety-content">
+                      <p><strong>Detected:</strong> {item.safetyNotice.reasons.join(", ")}</p>
+                      {item.safetyNotice.alerts && item.safetyNotice.alerts.length > 0 && (
+                        <p><strong>Contraindications:</strong> {item.safetyNotice.alerts.join(", ")}</p>
+                      )}
+                      {item.safetyNotice.recommended_action && (
+                        <p className="safety-recommendation"><strong>Action:</strong> {item.safetyNotice.recommended_action}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Evidence Sources Block */}
                         {item.evidenceMetadata &&
                           item.evidenceMetadata.length > 0 && (
                             <div className="sources-panel">

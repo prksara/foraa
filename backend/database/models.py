@@ -323,3 +323,30 @@ class HealthEvent(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="health_events")
+
+# --------------------------------------------------
+# Phase 8: Safety & Evaluation
+# --------------------------------------------------
+
+class SafetyEvent(Base):
+    __tablename__ = "safety_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    request_id: Mapped[Optional[str]] = mapped_column(String, index=True, nullable=True)
+    user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    conversation_id: Mapped[Optional[str]] = mapped_column(String, index=True, nullable=True)
+    safety_level: Mapped[str] = mapped_column(String, nullable=False)
+    detected_signals: Mapped[dict] = mapped_column(JSON, default=list)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+
+class EvaluationRun(Base):
+    __tablename__ = "evaluation_runs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    run_name: Mapped[str] = mapped_column(String, nullable=False)
+    total_cases: Mapped[int] = mapped_column(Integer, default=0)
+    passed_cases: Mapped[int] = mapped_column(Integer, default=0)
+    failed_cases: Mapped[int] = mapped_column(Integer, default=0)
+    metrics_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
