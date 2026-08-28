@@ -8,9 +8,13 @@ from pydantic import BaseModel, Field
 from database.database import get_db
 from database.models import (
     User, HealthProfile, HealthCondition, Allergy, Medication,
-    Lifestyle, HealthGoal, Measurement, HealthEvent
+    Lifestyle, HealthGoal, Measurement, HealthEvent, HealthInsight, Notification, MemoryItem
 )
 from auth.security import get_current_user
+from services.insights_engine import InsightsEngine
+import asyncio
+
+insights_engine = InsightsEngine()
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -112,6 +116,8 @@ class HealthGoalBase(BaseModel):
     status: str = "active"
     target_value: Optional[float] = None
     target_unit: Optional[str] = None
+    progress: Optional[float] = None
+    start_date: Optional[datetime.date] = None
     target_date: Optional[datetime.date] = None
 
 class HealthGoalResponse(HealthGoalBase):
@@ -163,6 +169,42 @@ class HealthSummaryResponse(BaseModel):
     active_medications_count: int = 0
     allergies_count: int = 0
     active_goals_count: int = 0
+
+class HealthInsightResponse(BaseModel):
+    id: str
+    type: str
+    message: str
+    confidence: float
+    generated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+class NotificationResponse(BaseModel):
+    id: str
+    type: str
+    title: str
+    message: str
+    severity: str
+    read: bool
+    created_at: datetime.datetime
+    expires_at: Optional[datetime.datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class MemoryItemBase(BaseModel):
+    content: str
+    category: str
+    source: str
+    source_id: Optional[str] = None
+
+class MemoryItemResponse(MemoryItemBase):
+    id: str
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
 
 
 # --- Endpoints ---
@@ -322,7 +364,10 @@ async def get_measurements(db: AsyncSession = Depends(get_db), user: User = Depe
 
 @router.post("/measurements", response_model=MeasurementResponse)
 async def create_measurement(data: MeasurementBase, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    return await create_item(db, user.id, Measurement, data)
+    item = await create_item(db, user.id, Measurement, data)
+    # Trigger background evaluation
+    asyncio.create_task(insights_engine.evaluate_recent_data(db, user.id))
+    return item
 
 @router.delete("/measurements/{item_id}")
 async def delete_measurement(item_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
@@ -339,7 +384,10 @@ async def get_timeline(db: AsyncSession = Depends(get_db), user: User = Depends(
 async def create_timeline_event(data: HealthEventBase, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     if not data.event_date:
         data.event_date = datetime.datetime.utcnow()
-    return await create_item(db, user.id, HealthEvent, data)
+    item = await create_item(db, user.id, HealthEvent, data)
+    # Trigger background evaluation
+    asyncio.create_task(insights_engine.evaluate_recent_data(db, user.id))
+    return item
 
 @router.put("/timeline/{item_id}", response_model=HealthEventResponse)
 async def update_timeline_event(item_id: str, data: HealthEventBase, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
@@ -368,3 +416,38 @@ async def get_summary(db: AsyncSession = Depends(get_db), user: User = Depends(g
         allergies_count=len(allergies),
         active_goals_count=len([g for g in goals if g.status == 'active'])
     )
+
+# Insights
+@router.get("/insights", response_model=List[HealthInsightResponse])
+async def get_insights(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    stmt = select(HealthInsight).where(HealthInsight.user_id == user.id).order_by(HealthInsight.generated_at.desc())
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+# Notifications
+@router.get("/notifications", response_model=List[NotificationResponse])
+async def get_notifications(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    stmt = select(Notification).where(Notification.user_id == user.id).order_by(Notification.created_at.desc())
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+@router.put("/notifications/{item_id}/read")
+async def mark_notification_read(item_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    stmt = select(Notification).where(Notification.id == item_id, Notification.user_id == user.id)
+    result = await db.execute(stmt)
+    notification = result.scalar_one_or_none()
+    if notification:
+        notification.read = True
+        await db.commit()
+    return {"status": "ok"}
+
+# Memory
+@router.get("/memory", response_model=List[MemoryItemResponse])
+async def get_memory_items(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    stmt = select(MemoryItem).where(MemoryItem.user_id == user.id).order_by(MemoryItem.created_at.desc())
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+@router.delete("/memory/{item_id}")
+async def delete_memory_item(item_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    return await delete_item(db, user.id, item_id, MemoryItem)

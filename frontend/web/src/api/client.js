@@ -373,3 +373,29 @@ export async function rejectExtraction(documentId, extractionId) {
     method: "POST",
   });
 }
+
+// --------------------------------------------------
+// Memory Governance
+// --------------------------------------------------
+export async function fetchMemoryItems() {
+  return request("/health/memory");
+}
+
+export async function deleteMemoryItem(id) {
+  return request(`/health/memory/${id}`, { method: "DELETE" });
+}
+
+// --------------------------------------------------
+// Insights & Notifications
+// --------------------------------------------------
+export async function fetchInsights() {
+  return request("/health/insights");
+}
+
+export async function fetchNotifications() {
+  return request("/health/notifications");
+}
+
+export async function markNotificationRead(id) {
+  return request(`/health/notifications/${id}/read`, { method: "PUT" });
+}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, Heart, Shield, Bell, Monitor, Lock } from "lucide-react";
+import { User, Heart, Shield, Bell, Monitor, Lock, Brain } from "lucide-react";
 import SettingsSection from "../components/SettingsSection";
 import SettingsRow from "../components/SettingsRow";
 import * as api from "../api/client";
@@ -10,6 +10,7 @@ const sections = [
   { id: "health", label: "Health Profile", icon: Heart },
   { id: "privacy", label: "Privacy", icon: Shield },
   { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "memory", label: "AI Memory", icon: Brain },
   { id: "appearance", label: "Appearance", icon: Monitor },
   { id: "security", label: "Security", icon: Lock },
 ];
@@ -65,6 +66,8 @@ function Settings() {
       });
   }, []);
 
+  const [memoryItems, setMemoryItems] = useState([]);
+
   useEffect(() => {
     api
       .fetchPreferences()
@@ -77,6 +80,22 @@ function Settings() {
         error("Failed to load preferences");
       });
   }, []);
+
+  useEffect(() => {
+    if (activeSection === "memory") {
+      api.fetchMemoryItems().then(setMemoryItems).catch(console.error);
+    }
+  }, [activeSection]);
+
+  const handleDeleteMemory = async (id) => {
+    try {
+      await api.deleteMemoryItem(id);
+      setMemoryItems(memoryItems.filter(m => m.id !== id));
+      success("Memory deleted");
+    } catch (e) {
+      error("Failed to delete memory");
+    }
+  };
 
   // Save preferences and apply theme whenever they change
   useEffect(() => {
@@ -280,6 +299,27 @@ function Settings() {
               >
                 <Toggle active={preferences.notif_health} onChange={(v) => updatePref("notif_health", v)} />
               </SettingsRow>
+            </SettingsSection>
+          )}
+
+          {activeSection === "memory" && (
+            <SettingsSection
+              title="AI Memory"
+              description="Explicit facts Forraa remembers about you across conversations."
+            >
+              {memoryItems.length === 0 ? (
+                <p style={{ color: "var(--text-tertiary)" }}>No memories stored yet.</p>
+              ) : (
+                memoryItems.map((item) => (
+                  <SettingsRow
+                    key={item.id}
+                    label={item.category}
+                    description={item.content}
+                  >
+                    <button className="btn btn--danger" onClick={() => handleDeleteMemory(item.id)}>Delete</button>
+                  </SettingsRow>
+                ))
+              )}
             </SettingsSection>
           )}
 

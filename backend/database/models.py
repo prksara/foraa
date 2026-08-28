@@ -37,6 +37,9 @@ class User(Base):
     document_extractions: Mapped[list["DocumentExtraction"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     health_events: Mapped[list["HealthEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     preferences: Mapped[Optional["UserPreferences"]] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    insights: Mapped[list["HealthInsight"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    notifications: Mapped[list["Notification"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    memory_items: Mapped[list["MemoryItem"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Conversation(Base):
@@ -183,6 +186,8 @@ class HealthGoal(Base):
     status: Mapped[str] = mapped_column(String, default="active") # active/completed/paused/cancelled
     target_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     target_unit: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    progress: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    start_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     target_date: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
@@ -323,6 +328,53 @@ class HealthEvent(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="health_events")
+
+# --------------------------------------------------
+# Phase 10: Intelligence & Proactive Care
+# --------------------------------------------------
+
+class HealthInsight(Base):
+    __tablename__ = "health_insights"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String, nullable=False) # TREND, CHANGE, MISSING_DATA, GOAL_PROGRESS, POTENTIAL_CONCERN
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    source_ids: Mapped[list[str]] = mapped_column(JSON, default=list) # Array of source IDs supporting this insight
+    deduplication_hash: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    generated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="insights")
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String, nullable=False) # INFO, REMINDER, INSIGHT, REPORT, GOAL, SYSTEM
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(String, default="normal") # low, normal, high, critical
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
+    source_id: Mapped[Optional[str]] = mapped_column(String, nullable=True) # Linked insight or report
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    expires_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="notifications")
+
+class MemoryItem(Base):
+    __tablename__ = "memory_items"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False) # preference, health_fact, routine
+    source: Mapped[str] = mapped_column(String, nullable=False) # e.g. "Conversation on Aug 12"
+    source_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
+    
+    user: Mapped["User"] = relationship(back_populates="memory_items")
 
 # --------------------------------------------------
 # Phase 8: Safety & Evaluation

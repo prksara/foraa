@@ -7,6 +7,8 @@ import {
   Heart,
   Apple,
   Sun,
+  Lightbulb,
+  Target
 } from "lucide-react";
 import AskForraa from "../components/AskForraa";
 import Card from "../components/Card";
@@ -63,9 +65,17 @@ function getGreeting() {
 function Home() {
   const navigate = useNavigate();
   const [summary, setSummary] = useState(null);
+  const [insights, setInsights] = useState([]);
+  const [goals, setGoals] = useState([]);
+  const [timeline, setTimeline] = useState([]);
+  const [reports, setReports] = useState([]);
 
   useEffect(() => {
     api.fetchHealthSummary().then(setSummary).catch(console.error);
+    api.fetchInsights().then(setInsights).catch(console.error);
+    api.fetchGoals().then(setGoals).catch(console.error);
+    api.fetchTimeline().then(setTimeline).catch(console.error);
+    api.fetchReports().then(setReports).catch(console.error);
   }, []);
 
   const hasData =
@@ -147,34 +157,141 @@ function Home() {
               </Card>
             )}
           </section>
+
+          <section>
+            <SectionHeader title="Recent Insights" />
+            {insights.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {insights.slice(0, 3).map(insight => (
+                  <Card key={insight.id} padding="md">
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <Lightbulb size={18} style={{ color: "var(--color-accent)", flexShrink: 0, marginTop: "2px" }} />
+                      <div>
+                        <div style={{ fontSize: "14px", fontWeight: "var(--weight-medium)", color: "var(--color-text-primary)" }}>{insight.message}</div>
+                        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "4px" }}>
+                          {new Date(insight.generated_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card padding="md">
+                <EmptyState
+                  icon={<Lightbulb size={20} />}
+                  title="No insights yet"
+                  description="Log more data to receive personalized insights."
+                />
+              </Card>
+            )}
+          </section>
         </div>
 
         {/* Right Column */}
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           <section>
+            <SectionHeader title="Active Goals" />
+            {goals.filter(g => g.status === 'active').length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {goals.filter(g => g.status === 'active').slice(0, 3).map(goal => (
+                  <Card key={goal.id} padding="md" onClick={() => navigate("/health")}>
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <Target size={18} style={{ color: "var(--color-accent)", flexShrink: 0, marginTop: "2px" }} />
+                      <div style={{ width: "100%" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "14px", fontWeight: "var(--weight-medium)" }}>{goal.title}</span>
+                          {goal.progress !== null && goal.target_value !== null && (
+                            <span style={{ fontSize: "12px", fontWeight: "var(--weight-semibold)", color: "var(--color-accent)" }}>
+                              {Math.round((goal.progress / goal.target_value) * 100)}%
+                            </span>
+                          )}
+                        </div>
+                        {goal.progress !== null && goal.target_value !== null && (
+                          <div style={{ marginTop: "8px", height: "4px", background: "var(--color-border)", borderRadius: "2px", overflow: "hidden" }}>
+                            <div style={{ height: "100%", background: "var(--color-accent)", width: `${Math.min((goal.progress / goal.target_value) * 100, 100)}%` }}></div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card padding="md">
+                <EmptyState
+                    icon={<Target size={20} />}
+                    title="No active goals"
+                    description="Set health goals to track your progress."
+                    action={{
+                      label: "Set Goal",
+                      onClick: () => navigate("/health"),
+                    }}
+                  />
+              </Card>
+            )}
+          </section>
+
+          <section>
             <SectionHeader title="Recent Activity" />
-            <Card padding="md">
-              <EmptyState
-                  icon={<Activity size={20} />}
-                  title="No recent activity"
-                  description="Activity will appear here when you log health data."
-                />
-            </Card>
+            {timeline.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {timeline.slice(0, 3).map(event => (
+                  <Card key={event.id} padding="md" onClick={() => navigate("/health")}>
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <Activity size={18} style={{ color: "var(--color-text-secondary)", flexShrink: 0, marginTop: "2px" }} />
+                      <div>
+                        <div style={{ fontSize: "14px", fontWeight: "var(--weight-medium)" }}>{event.title}</div>
+                        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "4px" }}>
+                          {new Date(event.event_date).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card padding="md">
+                <EmptyState
+                    icon={<Activity size={20} />}
+                    title="No recent activity"
+                    description="Activity will appear here when you log health data."
+                  />
+              </Card>
+            )}
           </section>
 
           <section>
             <SectionHeader title="Recent Reports" />
-            <Card padding="md">
-              <EmptyState
-                  icon={<FileText size={20} />}
-                  title="No recent reports"
-                  description="Upload a report to see it here."
-                  action={{
-                    label: "Upload Report",
-                    onClick: () => navigate("/reports"),
-                  }}
-                />
-            </Card>
+            {reports.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {reports.slice(0, 3).map(report => (
+                  <Card key={report.id} padding="md" onClick={() => navigate(`/reports/${report.id}`)}>
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <FileText size={18} style={{ color: "var(--color-accent)", flexShrink: 0, marginTop: "2px" }} />
+                      <div>
+                        <div style={{ fontSize: "14px", fontWeight: "var(--weight-medium)" }}>{report.title}</div>
+                        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "4px" }}>
+                          {new Date(report.uploaded_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card padding="md">
+                <EmptyState
+                    icon={<FileText size={20} />}
+                    title="No recent reports"
+                    description="Upload a report to see it here."
+                    action={{
+                      label: "Upload Report",
+                      onClick: () => navigate("/reports"),
+                    }}
+                  />
+              </Card>
+            )}
           </section>
         </div>
       </div>

@@ -17,8 +17,12 @@ class HealthContextBuilder:
         For now, we fetch the active/relevant data and format it.
         """
         needs_profile = True
+        context_selection = ["profile", "conditions", "allergies", "medications", "goals", "measurements", "timeline"]
+        
         if intent:
             needs_profile = intent.get("needs_profile", True)
+            if "context_selection" in intent:
+                context_selection = intent["context_selection"]
 
         xml_parts = ["<health_context>"]
         xml_parts.append("<guidelines>")
@@ -26,34 +30,47 @@ class HealthContextBuilder:
         xml_parts.append("</guidelines>")
 
         if needs_profile:
-            # Fetch data
-            profile_stmt = select(HealthProfile).where(HealthProfile.user_id == self.user.id)
-            profile_res = await self.db.execute(profile_stmt)
-            profile: Optional[HealthProfile] = profile_res.scalar_one_or_none()
+            profile = None
+            if "profile" in context_selection:
+                profile_stmt = select(HealthProfile).where(HealthProfile.user_id == self.user.id)
+                profile_res = await self.db.execute(profile_stmt)
+                profile = profile_res.scalar_one_or_none()
 
-            conditions_stmt = select(HealthCondition).where(HealthCondition.user_id == self.user.id, HealthCondition.status == 'active')
-            conditions_res = await self.db.execute(conditions_stmt)
-            conditions = conditions_res.scalars().all()
+            conditions = []
+            if "conditions" in context_selection:
+                conditions_stmt = select(HealthCondition).where(HealthCondition.user_id == self.user.id, HealthCondition.status == 'active')
+                conditions_res = await self.db.execute(conditions_stmt)
+                conditions = conditions_res.scalars().all()
 
-            allergies_stmt = select(Allergy).where(Allergy.user_id == self.user.id, Allergy.status == 'active')
-            allergies_res = await self.db.execute(allergies_stmt)
-            allergies = allergies_res.scalars().all()
+            allergies = []
+            if "allergies" in context_selection:
+                allergies_stmt = select(Allergy).where(Allergy.user_id == self.user.id, Allergy.status == 'active')
+                allergies_res = await self.db.execute(allergies_stmt)
+                allergies = allergies_res.scalars().all()
 
-            meds_stmt = select(Medication).where(Medication.user_id == self.user.id, Medication.status == 'active')
-            meds_res = await self.db.execute(meds_stmt)
-            meds = meds_res.scalars().all()
+            meds = []
+            if "medications" in context_selection:
+                meds_stmt = select(Medication).where(Medication.user_id == self.user.id, Medication.status == 'active')
+                meds_res = await self.db.execute(meds_stmt)
+                meds = meds_res.scalars().all()
             
-            goals_stmt = select(HealthGoal).where(HealthGoal.user_id == self.user.id, HealthGoal.status == 'active')
-            goals_res = await self.db.execute(goals_stmt)
-            goals = goals_res.scalars().all()
+            goals = []
+            if "goals" in context_selection:
+                goals_stmt = select(HealthGoal).where(HealthGoal.user_id == self.user.id, HealthGoal.status == 'active')
+                goals_res = await self.db.execute(goals_stmt)
+                goals = goals_res.scalars().all()
             
-            measurements_stmt = select(Measurement).where(Measurement.user_id == self.user.id).order_by(Measurement.created_at.desc()).limit(20)
-            measurements_res = await self.db.execute(measurements_stmt)
-            measurements = measurements_res.scalars().all()
+            measurements = []
+            if "measurements" in context_selection:
+                measurements_stmt = select(Measurement).where(Measurement.user_id == self.user.id).order_by(Measurement.created_at.desc()).limit(20)
+                measurements_res = await self.db.execute(measurements_stmt)
+                measurements = measurements_res.scalars().all()
             
-            events_stmt = select(HealthEvent).where(HealthEvent.user_id == self.user.id).order_by(HealthEvent.event_date.desc()).limit(15)
-            events_res = await self.db.execute(events_stmt)
-            events = events_res.scalars().all()
+            events = []
+            if "timeline" in context_selection:
+                events_stmt = select(HealthEvent).where(HealthEvent.user_id == self.user.id).order_by(HealthEvent.event_date.desc()).limit(15)
+                events_res = await self.db.execute(events_stmt)
+                events = events_res.scalars().all()
             
             if profile:
                 xml_parts.append("<profile>")
