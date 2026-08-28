@@ -9,10 +9,13 @@ import {
   MessageSquare,
   CheckCircle2,
   FileText,
+  Paperclip,
+  X,
 } from "lucide-react";
 import {
   streamChatMessage,
   fetchConversation,
+  uploadReport,
 } from "../api/client";
 import ReactMarkdown from "react-markdown";
 import { useChat } from "../contexts/ChatContext";
@@ -30,6 +33,10 @@ function Assistant() {
   const [copiedIndex, setCopiedIndex] = useState(null);
 
   const location = useLocation();
+  const [attachments, setAttachments] = useState(
+    location.state?.activeReportId ? [{ id: location.state.activeReportId, name: "Report" }] : []
+  );
+  const fileInputRef = useRef(null);
   const activeReportIdRef = useRef(location.state?.activeReportId || null);
 
   const abortControllerRef = useRef(null);
@@ -54,6 +61,7 @@ function Assistant() {
       setMessages([]);
       setMessage("");
       setError(null);
+      setAttachments([]);
       if (textareaRef.current) textareaRef.current.focus();
     }
   }, [id]);
@@ -110,10 +118,12 @@ function Assistant() {
     abortControllerRef.current = new AbortController();
 
     try {
+      const attachment_ids = attachments.map(a => a.id);
+      
       await streamChatMessage(
         text,
         currentConvId, // passes undefined/null if New Chat
-        activeReportIdRef.current,
+        attachment_ids.length > 0 ? attachment_ids : null,
         (data) => {
           if (data.conversation_id && !currentConvId) {
             receivedNewConvId = data.conversation_id;
@@ -261,6 +271,26 @@ function Assistant() {
       textareaRef.current.style.height = "24px";
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
     }
+  };
+
+  const handleFileUpload = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    setLoading(true);
+    try {
+      const res = await uploadReport(files);
+      setAttachments(prev => [...prev, { id: res.id, name: files[0].name }]);
+    } catch (err) {
+      setError("Failed to upload attachment: " + err.message);
+    } finally {
+      setLoading(false);
+      e.target.value = "";
+    }
+  };
+  
+  const removeAttachment = (indexToRemove) => {
+    setAttachments(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
   return (
@@ -530,7 +560,38 @@ function Assistant() {
           <div className="chat-input-wrapper">
             {error && <div className="chat-error-banner">{error}</div>}
 
+            {attachments.length > 0 && (
+              <div className="attachments-list" style={{ display: 'flex', gap: '8px', padding: '8px 12px', flexWrap: 'wrap' }}>
+                {attachments.map((att, idx) => (
+                  <div key={idx} className="attachment-chip" style={{ display: 'flex', alignItems: 'center', background: 'var(--color-surface-hover)', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                    <FileText size={12} style={{ marginRight: '4px' }}/> 
+                    {att.name}
+                    <button onClick={() => removeAttachment(idx)} style={{ background: 'none', border: 'none', marginLeft: '6px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="input-row">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                style={{ display: 'none' }} 
+                onChange={handleFileUpload}
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+              />
+              <button 
+                className="attach-btn" 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
+                title="Attach report or image"
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '8px' }}
+              >
+                <Paperclip size={20} />
+              </button>
+              
               <textarea
                 ref={textareaRef}
                 value={message}

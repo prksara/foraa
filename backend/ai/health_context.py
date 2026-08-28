@@ -10,7 +10,7 @@ class HealthContextBuilder:
         self.db = db
         self.user = user
 
-    async def build_context(self, user_message: str, active_report_id: Optional[str] = None, evidence_pack: Optional[EvidencePack] = None, intent: Optional[dict] = None) -> str:
+    async def build_context(self, user_message: str, attachment_ids: Optional[list[str]] = None, evidence_pack: Optional[EvidencePack] = None, intent: Optional[dict] = None) -> str:
         """
         Builds a structured XML-delimited health context based on the user's data.
         In the future, this can use keyword/topic relevance matching based on `user_message`.
@@ -46,6 +46,10 @@ class HealthContextBuilder:
             goals_stmt = select(HealthGoal).where(HealthGoal.user_id == self.user.id, HealthGoal.status == 'active')
             goals_res = await self.db.execute(goals_stmt)
             goals = goals_res.scalars().all()
+            
+            measurements_stmt = select(Measurement).where(Measurement.user_id == self.user.id).order_by(Measurement.created_at.desc()).limit(20)
+            measurements_res = await self.db.execute(measurements_stmt)
+            measurements = measurements_res.scalars().all()
             
             events_stmt = select(HealthEvent).where(HealthEvent.user_id == self.user.id).order_by(HealthEvent.event_date.desc()).limit(15)
             events_res = await self.db.execute(events_stmt)
@@ -83,6 +87,13 @@ class HealthContextBuilder:
                     xml_parts.append(f"  <goal title=\"{g.title}\" category=\"{g.category or 'general'}\"/>")
                 xml_parts.append("</active_goals>")
 
+            if measurements:
+                xml_parts.append("<past_measurements>")
+                for m in measurements:
+                    date_str = m.created_at.strftime("%Y-%m-%d") if m.created_at else "unknown"
+                    xml_parts.append(f"  <measurement type=\"{m.type}\" value=\"{m.value}\" unit=\"{m.unit}\" date=\"{date_str}\" source=\"{m.source}\"/>")
+                xml_parts.append("</past_measurements>")
+
             if events:
                 xml_parts.append("<recent_health_events>")
                 for e in events:
@@ -96,15 +107,35 @@ class HealthContextBuilder:
                     xml_parts.append(f"  </event>")
                 xml_parts.append("</recent_health_events>")
                 
-        if active_report_id:
-            report_stmt = select(HealthDocument).where(HealthDocument.id == active_report_id, HealthDocument.user_id == self.user.id)
-            report_res = await self.db.execute(report_stmt)
-            report = report_res.scalar_one_or_none()
-            if report and report.summary:
-                xml_parts.append("<active_report>")
-                xml_parts.append(f"  <filename>{report.filename}</filename>")
-                xml_parts.append(f"  <summary>{report.summary}</summary>")
-                xml_parts.append("</active_report>")
+        if attachment_ids:
+            from database.models import DocumentExtraction
+            
+            for attachment_id in attachment_ids:
+                report_stmt = select(HealthDocument).where(HealthDocument.id == attachment_id, HealthDocument.user_id == self.user.id)
+                report_res = await self.db.execute(report_stmt)
+                report = report_res.scalar_one_or_none()
+                
+                if report:
+                    xml_parts.append("<active_report>")
+                    xml_parts.append(f"  <filename>{report.filename}</filename>")
+                    if report.summary:
+                        xml_parts.append(f"  <summary>{report.summary}</summary>")
+                        
+                    # Also load extractions for this document to give the LLM structured data
+                    ext_stmt = select(DocumentExtraction).where(DocumentExtraction.document_id == report.id)
+                    ext_res = await self.db.execute(ext_stmt)
+                    extractions = ext_res.scalars().all()
+                    
+                    if extractions:
+                        xml_parts.append("  <extracted_data>")
+                        for ext in extractions:
+                            xml_parts.append(f"    <entity type=\"{ext.entity_type}\" confidence=\"{ext.confidence}\">")
+                            import json
+                            xml_parts.append(f"      {json.dumps(ext.data)}")
+                            xml_parts.append(f"    </entity>")
+                        xml_parts.append("  </extracted_data>")
+                    
+                    xml_parts.append("</active_report>")
 
         if evidence_pack and evidence_pack.retrieved_items:
             xml_parts.append("<medical_evidence>")

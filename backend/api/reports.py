@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Dict
 import datetime
+import magic
 
 from database.database import get_db
 from database.models import User, HealthDocument, DocumentExtraction, HealthCondition, Allergy, Medication, Measurement, HealthEvent
@@ -84,6 +85,17 @@ async def upload_report(
     # 5MB limit
     if len(file_bytes) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 5MB).")
+
+    # Validate true mime type using python-magic
+    try:
+        true_mime = magic.from_buffer(file_bytes, mime=True)
+    except Exception as e:
+        print(f"Magic byte validation failed: {e}")
+        raise HTTPException(status_code=400, detail="Could not validate file contents.")
+
+    allowed_types = ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"]
+    if true_mime not in allowed_types:
+        raise HTTPException(status_code=400, detail=f"Invalid file content type: {true_mime}")
 
     try:
         # 1. Upload to storage

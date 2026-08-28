@@ -139,7 +139,7 @@ class ConversationUpdate(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
-    active_report_id: Optional[str] = None
+    attachment_ids: Optional[List[str]] = None
 
 class ChatResponse(BaseModel):
     reply: str
@@ -249,7 +249,7 @@ async def chat_stream(
         
         # 3. Build preliminary basic context for the reasoning engine
         health_builder = HealthContextBuilder(db, user)
-        base_context = await health_builder.build_context(request.message, active_report_id=request.active_report_id)
+        base_context = await health_builder.build_context(request.message, attachment_ids=request.attachment_ids)
 
         # 4. Stream response and execute reasoning pipeline concurrently
         async def event_generator():
@@ -378,7 +378,7 @@ async def chat_stream(
                         # We pass the final_state to filter the context appropriately
                         final_context = await health_builder.build_context(
                             request.message, 
-                            active_report_id=request.active_report_id,
+                            attachment_ids=request.attachment_ids,
                             evidence_pack=evidence_pack,
                             intent=final_state.intent.model_dump() if final_state.intent else None
                         )

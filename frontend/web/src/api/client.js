@@ -105,7 +105,7 @@ export async function sendChatMessage(message) {
 export async function streamChatMessage(
   message,
   conversation_id,
-  active_report_id,
+  attachment_ids,
   onMessage,
   signal,
 ) {
@@ -118,7 +118,7 @@ export async function streamChatMessage(
       "Content-Type": "application/json",
       ...authHeader,
     },
-    body: JSON.stringify({ message, conversation_id, active_report_id }),
+    body: JSON.stringify({ message, conversation_id, attachment_ids }),
     signal,
   });
 
