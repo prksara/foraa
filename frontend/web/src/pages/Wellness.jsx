@@ -4,6 +4,7 @@ import SectionHeader from "../components/SectionHeader";
 import HealthMetric from "../components/HealthMetric";
 import EmptyState from "../components/EmptyState";
 import AskForraa from "../components/AskForraa";
+import TrendChart from "../components/TrendChart";
 
 const wellnessMetrics = [
   { icon: Moon, name: "Sleep" },
@@ -39,6 +40,10 @@ function Wellness() {
             value={null}
           />
         ))}
+      </div>
+
+      <div style={{ marginTop: "30px" }}>
+        <TrendChart metric="sleep" category="lifestyle" title="Sleep Trend" days={30} />
       </div>
 
       <div className="page-section">

@@ -21,6 +21,7 @@ import EmptyState from "../components/EmptyState";
 import SectionHeader from "../components/SectionHeader";
 import Button from "../components/Button";
 import * as api from "../api/client";
+import TrendChart from "../components/TrendChart";
 
 const tabs = [
   { id: "overview", label: "Overview" },
@@ -816,6 +817,11 @@ function MyHealth() {
               ))}
             </ul>
           )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "20px" }}>
+            <TrendChart metric="weight" category="measurement" title="Weight Trend" days={30} />
+            <TrendChart metric="blood_pressure" category="measurement" title="Blood Pressure Trend" days={30} />
+          </div>
         </div>
       )}
 

@@ -19,6 +19,7 @@ import {
   Search,
 } from "lucide-react";
 import MobileNav from "./MobileNav";
+import QuickAddLog from "./QuickAddLog";
 import { useAuth } from "../contexts/AuthContext";
 import { useChat } from "../contexts/ChatContext";
 
@@ -293,6 +294,8 @@ function Layout() {
       >
         <Outlet />
       </main>
+
+      {!location.pathname.startsWith("/assistant") && <QuickAddLog />}
 
       <MobileNav />
     </div>

@@ -38,6 +38,7 @@ function Settings() {
     data_retention: "90",
     doc_storage: true,
     theme: "system",
+    unit_preference: "metric",
   });
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
@@ -131,6 +132,33 @@ function Settings() {
       error("Failed to save health profile");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    try {
+      const data = await api.exportHealthData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `foraa_export_${new Date().toISOString().split("T")[0]}.json`;
+      a.click();
+      success("Data exported successfully");
+    } catch (e) {
+      error("Failed to export data");
+    }
+  };
+
+  const handleDeleteAllData = async () => {
+    if (window.confirm("Are you sure you want to delete ALL your health data? This action is irreversible.")) {
+      try {
+        await api.deleteAllHealthData();
+        success("All health data deleted");
+        window.location.reload();
+      } catch (e) {
+        error("Failed to delete health data");
+      }
     }
   };
 
@@ -279,6 +307,18 @@ function Settings() {
               >
                 <Toggle active={preferences.doc_storage} onChange={(v) => updatePref("doc_storage", v)} />
               </SettingsRow>
+              
+              <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid var(--border)" }}>
+                <h4 style={{ marginBottom: "10px", fontSize: "14px", color: "var(--text-primary)" }}>Data Management</h4>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button className="btn btn--secondary" onClick={handleExportData}>
+                    Export Data
+                  </button>
+                  <button className="btn btn--danger" onClick={handleDeleteAllData}>
+                    Delete All Data
+                  </button>
+                </div>
+              </div>
             </SettingsSection>
           )}
 
@@ -339,6 +379,18 @@ function Settings() {
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
                   <option value="system">System</option>
+                </select>
+              </SettingsRow>
+              <SettingsRow
+                label="Unit Preference"
+                description="Choose your preferred measurement units"
+              >
+                <select
+                  value={preferences.unit_preference}
+                  onChange={(e) => updatePref("unit_preference", e.target.value)}
+                >
+                  <option value="metric">Metric (kg, cm, °C)</option>
+                  <option value="imperial">Imperial (lbs, in, °F)</option>
                 </select>
               </SettingsRow>
             </SettingsSection>

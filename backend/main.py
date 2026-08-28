@@ -339,6 +339,14 @@ async def chat_stream(
                         # First classify to know if we need evidence
                         state.intent = await asyncio.to_thread(engine.classifier.classify, state.message)
                         
+                        if state.intent.is_health_log:
+                            await queue.put({"reasoning_status": "Extracting health data..."})
+                            from services.health_log_parser import HealthLogParser
+                            parser = HealthLogParser()
+                            extracted_log = await asyncio.to_thread(parser.parse, state.message)
+                            if extracted_log:
+                                await queue.put({"health_log_extracted": extracted_log})
+
                         if state.intent.needs_evidence:
                             await queue.put({"reasoning_status": "Searching medical knowledge base..."})
                             retrieval_service = EvidenceRetrievalService(db)

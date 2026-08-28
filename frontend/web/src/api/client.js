@@ -294,6 +294,19 @@ export async function deleteMeasurement(id) {
   return request(`/health/measurements/${id}`, { method: "DELETE" });
 }
 
+// Trends
+export async function fetchTrends(metric, category = "measurement", days = 30) {
+  return request(`/health/trends?metric=${metric}&category=${category}&days=${days}`);
+}
+
+// Export / Deletion
+export async function exportHealthData() {
+  return request("/health/export");
+}
+export async function deleteAllHealthData() {
+  return request("/health/delete_all", { method: "DELETE" });
+}
+
 // ----------------------------------------------------
 // Settings / Preferences endpoints
 // ----------------------------------------------------

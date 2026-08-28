@@ -3,7 +3,7 @@ import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
 
 from database.database import get_db
 from database.models import (
@@ -99,6 +99,13 @@ class LifestyleBase(BaseModel):
     summary: Optional[str] = None
     details: Optional[str] = None
     source: str = "user"
+    
+    @field_validator("category")
+    def validate_category(cls, v):
+        valid_cats = ["sleep", "exercise", "nutrition", "smoking", "alcohol", "caffeine", "occupation", "general"]
+        if v.lower() not in valid_cats:
+            raise ValueError(f"Category must be one of {valid_cats}")
+        return v.lower()
 
 class LifestyleResponse(LifestyleBase):
     id: str
@@ -136,6 +143,15 @@ class MeasurementBase(BaseModel):
     unit: str
     source: str = "user"
     notes: Optional[str] = None
+    measured_at: Optional[datetime.datetime] = None
+
+    @field_validator("value")
+    def check_value_bounds(cls, v, info: ValidationInfo):
+        if info.data.get("type", "").lower() == "weight" and v < 0:
+            raise ValueError("Weight cannot be negative.")
+        if info.data.get("type", "").lower() == "heart_rate" and v < 0:
+            raise ValueError("Heart rate cannot be negative.")
+        return v
 
 class MeasurementResponse(MeasurementBase):
     id: str
@@ -328,6 +344,17 @@ async def get_lifestyle(db: AsyncSession = Depends(get_db), user: User = Depends
 
 @router.post("/lifestyle", response_model=LifestyleResponse)
 async def create_lifestyle(data: LifestyleBase, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=1)
+    stmt = select(Lifestyle).where(
+        Lifestyle.user_id == user.id,
+        Lifestyle.category == data.category,
+        Lifestyle.summary == data.summary,
+        Lifestyle.created_at >= cutoff
+    )
+    result = await db.execute(stmt)
+    if result.scalars().first():
+        raise HTTPException(status_code=409, detail="Duplicate lifestyle entry detected.")
+
     return await create_item(db, user.id, Lifestyle, data)
 
 @router.put("/lifestyle/{item_id}", response_model=LifestyleResponse)
@@ -364,6 +391,21 @@ async def get_measurements(db: AsyncSession = Depends(get_db), user: User = Depe
 
 @router.post("/measurements", response_model=MeasurementResponse)
 async def create_measurement(data: MeasurementBase, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    # Deduplication check
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=1)
+    stmt = select(Measurement).where(
+        Measurement.user_id == user.id,
+        Measurement.type == data.type,
+        Measurement.value == data.value,
+        Measurement.created_at >= cutoff
+    )
+    result = await db.execute(stmt)
+    if result.scalars().first():
+        raise HTTPException(status_code=409, detail="Duplicate measurement detected.")
+        
+    if not data.measured_at:
+        data.measured_at = datetime.datetime.utcnow()
+        
     item = await create_item(db, user.id, Measurement, data)
     # Trigger background evaluation
     asyncio.create_task(insights_engine.evaluate_recent_data(db, user.id))
@@ -382,6 +424,17 @@ async def get_timeline(db: AsyncSession = Depends(get_db), user: User = Depends(
 
 @router.post("/timeline", response_model=HealthEventResponse)
 async def create_timeline_event(data: HealthEventBase, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=1)
+    stmt = select(HealthEvent).where(
+        HealthEvent.user_id == user.id,
+        HealthEvent.event_type == data.event_type,
+        HealthEvent.title == data.title,
+        HealthEvent.created_at >= cutoff
+    )
+    result = await db.execute(stmt)
+    if result.scalars().first():
+        raise HTTPException(status_code=409, detail="Duplicate event detected.")
+
     if not data.event_date:
         data.event_date = datetime.datetime.utcnow()
     item = await create_item(db, user.id, HealthEvent, data)
@@ -417,6 +470,24 @@ async def get_summary(db: AsyncSession = Depends(get_db), user: User = Depends(g
         active_goals_count=len([g for g in goals if g.status == 'active'])
     )
 
+# Trends
+@router.get("/trends")
+async def get_trends(
+    metric: str,
+    category: str = "measurement",
+    days: int = 30,
+    db: AsyncSession = Depends(get_db), 
+    user: User = Depends(get_current_user)
+):
+    from services.trends import TrendAnalysisService
+    service = TrendAnalysisService(db, user.id)
+    if category == "measurement":
+        return await service.get_measurement_trend(metric, days)
+    elif category == "lifestyle":
+        return await service.get_lifestyle_trend(metric, days)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid category. Use 'measurement' or 'lifestyle'.")
+
 # Insights
 @router.get("/insights", response_model=List[HealthInsightResponse])
 async def get_insights(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
@@ -451,3 +522,43 @@ async def get_memory_items(db: AsyncSession = Depends(get_db), user: User = Depe
 @router.delete("/memory/{item_id}")
 async def delete_memory_item(item_id: str, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     return await delete_item(db, user.id, item_id, MemoryItem)
+
+# Export Data
+@router.get("/export")
+async def export_health_data(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    profile = await get_health_profile(db, user)
+    conditions = await list_items(db, user.id, HealthCondition)
+    allergies = await list_items(db, user.id, Allergy)
+    medications = await list_items(db, user.id, Medication)
+    lifestyle = await list_items(db, user.id, Lifestyle)
+    goals = await list_items(db, user.id, HealthGoal)
+    measurements = await list_items(db, user.id, Measurement)
+    timeline = await list_items(db, user.id, HealthEvent)
+    
+    return {
+        "profile": profile,
+        "conditions": conditions,
+        "allergies": allergies,
+        "medications": medications,
+        "lifestyle": lifestyle,
+        "goals": goals,
+        "measurements": measurements,
+        "timeline": timeline,
+        "exported_at": datetime.datetime.utcnow().isoformat()
+    }
+
+# Delete All Data
+@router.delete("/delete_all")
+async def delete_all_health_data(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    # Delete in order of dependencies (or just delete all referencing user_id)
+    models = [HealthCondition, Allergy, Medication, Lifestyle, HealthGoal, Measurement, HealthEvent, HealthInsight, Notification, MemoryItem, HealthProfile]
+    
+    for model in models:
+        stmt = select(model).where(model.user_id == user.id)
+        result = await db.execute(stmt)
+        items = result.scalars().all()
+        for item in items:
+            await db.delete(item)
+            
+    await db.commit()
+    return {"status": "success", "message": "All health data deleted"}

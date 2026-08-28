@@ -55,6 +55,7 @@ class IntentAnalysis(BaseModel):
     needs_evidence: bool = False
     needs_profile: bool = False
     needs_reports: bool = False
+    is_health_log: bool = False
 
 class SubQuestion(BaseModel):
     id: str

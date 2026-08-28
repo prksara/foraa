@@ -17,7 +17,8 @@ Output a valid JSON object matching this schema:
     "complexity": "SIMPLE or COMPLEX",
     "needs_evidence": true/false,
     "needs_profile": true/false,
-    "needs_reports": true/false
+    "needs_reports": true/false,
+    "is_health_log": true/false
 }
 
 Categories to choose from: 
@@ -30,6 +31,7 @@ Complexity:
 needs_evidence: True ONLY if answering requires medical science/evidence (e.g. treatments, side effects, disease information). False for personal data questions ("What did I eat yesterday?").
 needs_profile: True if knowing the user's age, sex, conditions, allergies, or medications is necessary to answer safely.
 needs_reports: True if the user asks about a test, lab result, or uploaded medical report.
+is_health_log: True ONLY if the user is explicitly stating a health measurement, symptom, or lifestyle entry to be recorded (e.g. "I weigh 150 lbs", "I just slept 7 hours", "My blood pressure is 120/80").
 
 Output ONLY JSON.
 """
@@ -46,7 +48,8 @@ class QueryClassifier:
             complexity=QueryComplexity.COMPLEX, # Safe default
             needs_evidence=True,
             needs_profile=True,
-            needs_reports=False
+            needs_reports=False,
+            is_health_log=False
         )
         
         if not self._client or not user_message.strip():
@@ -80,7 +83,8 @@ class QueryClassifier:
                     complexity=QueryComplexity(data.get("complexity", "COMPLEX")),
                     needs_evidence=bool(data.get("needs_evidence", True)),
                     needs_profile=bool(data.get("needs_profile", True)),
-                    needs_reports=bool(data.get("needs_reports", False))
+                    needs_reports=bool(data.get("needs_reports", False)),
+                    is_health_log=bool(data.get("is_health_log", False))
                 )
                 
         except Exception as e:

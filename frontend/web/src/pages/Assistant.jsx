@@ -171,6 +171,16 @@ function Assistant() {
               return newMsgs;
             });
           }
+          if (data.health_log_extracted) {
+            setMessages((prev) => {
+              const newMsgs = [...prev];
+              newMsgs[newMsgs.length - 1] = {
+                ...newMsgs[newMsgs.length - 1],
+                healthLogExtracted: data.health_log_extracted,
+              };
+              return newMsgs;
+            });
+          }
           if (data.content) {
             assistantContent += data.content;
             setMessages((prev) => {
@@ -498,6 +508,61 @@ function Assistant() {
                               </div>
                             </div>
                           )}
+                          
+                        {/* Health Log Confirmation Block */}
+                        {item.healthLogExtracted && (
+                          <div className="health-log-confirmation" style={{ marginTop: "16px", padding: "12px", background: "var(--color-surface-alt)", borderRadius: "8px", border: "1px solid var(--color-border)", display: "flex", flexDirection: "column", gap: "8px" }}>
+                            <div style={{ fontWeight: "var(--weight-semibold)", fontSize: "14px", display: "flex", alignItems: "center", gap: "6px" }}>
+                              <CheckCircle2 size={16} style={{ color: "var(--color-accent)" }} />
+                              Confirm Health Log
+                            </div>
+                            <div style={{ fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                              I detected a health entry. Would you like to save it to your profile?
+                            </div>
+                            <div style={{ background: "var(--color-background)", padding: "12px", borderRadius: "6px", fontSize: "13px" }}>
+                              <strong>Category:</strong> {item.healthLogExtracted.category}<br/>
+                              <strong>Type:</strong> {item.healthLogExtracted.type}<br/>
+                              {item.healthLogExtracted.value !== undefined && (
+                                <><strong>Value:</strong> {item.healthLogExtracted.value} {item.healthLogExtracted.unit}<br/></>
+                              )}
+                              {item.healthLogExtracted.secondary_value !== undefined && (
+                                <><strong>Secondary Value:</strong> {item.healthLogExtracted.secondary_value}<br/></>
+                              )}
+                              {item.healthLogExtracted.title && (
+                                <><strong>Title:</strong> {item.healthLogExtracted.title}<br/></>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                              <button 
+                                style={{ flex: 1, padding: "8px", background: "var(--color-accent)", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "var(--weight-medium)" }}
+                                onClick={async (e) => {
+                                  const btn = e.currentTarget;
+                                  btn.disabled = true;
+                                  btn.innerText = "Saving...";
+                                  try {
+                                    const { category, type, value, secondary_value, unit, title } = item.healthLogExtracted;
+                                    const { createMeasurement, createLifestyle, createTimelineEvent } = await import("../api/client");
+                                    
+                                    if (category === "measurement") {
+                                      await createMeasurement({ type, value, secondary_value, unit, source: "chat" });
+                                    } else if (category === "lifestyle") {
+                                      await createLifestyle({ category: type, summary: `${value || ''} ${unit || ''}`, details: title || '', source: "chat" });
+                                    } else if (category === "symptom") {
+                                      await createTimelineEvent({ event_type: "symptom", title: title || type, source_type: "chat" });
+                                    }
+                                    btn.innerText = "Saved";
+                                    btn.style.background = "var(--color-success)";
+                                  } catch (err) {
+                                    btn.innerText = "Error";
+                                    btn.style.background = "var(--color-error)";
+                                  }
+                                }}
+                              >
+                                Confirm & Save
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </>
                     ) : (
                       item.content

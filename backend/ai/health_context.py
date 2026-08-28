@@ -62,7 +62,18 @@ class HealthContextBuilder:
             
             measurements = []
             if "measurements" in context_selection:
-                measurements_stmt = select(Measurement).where(Measurement.user_id == self.user.id).order_by(Measurement.created_at.desc()).limit(20)
+                from datetime import datetime, timedelta
+                
+                measurements_stmt = select(Measurement).where(Measurement.user_id == self.user.id)
+                
+                if intent and intent.get("measurement_type"):
+                    measurements_stmt = measurements_stmt.where(Measurement.type == intent["measurement_type"])
+                    
+                if intent and intent.get("date_range_days"):
+                    cutoff = datetime.utcnow() - timedelta(days=intent["date_range_days"])
+                    measurements_stmt = measurements_stmt.where(Measurement.created_at >= cutoff)
+                    
+                measurements_stmt = measurements_stmt.order_by(Measurement.created_at.desc()).limit(100) # Increased limit for trends
                 measurements_res = await self.db.execute(measurements_stmt)
                 measurements = measurements_res.scalars().all()
             
