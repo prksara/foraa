@@ -23,7 +23,7 @@ import { useEffect } from "react";
 
 /** Applies the user's saved theme preference to <body>. */
 function ThemeApplier() {
-  useTheme();
+  // useTheme(); // Disabled to enforce clean white minimalistic theme
   useEffect(() => {
     document.title = "Forraa Healthcare Intelligence";
   }, []);

@@ -7,10 +7,10 @@
 
 :root {
   /* Colors — Palette */
-  --color-bg: #FAFAFA;
+  --color-bg: #ffffff;
   --color-surface: #ffffff;
-  --color-surface-secondary: #f4f6f5;
-  --color-surface-hover: #f9fafa;
+  --color-surface-secondary: #f9f9f9;
+  --color-surface-hover: #f3f3f3;
 
   --color-border: #f0f0f0;
   --color-border-subtle: #f7f7f7;
@@ -99,27 +99,7 @@
   --mobile-nav-h: 64px;
 }
 
-body.dark-theme {
-  --color-bg: #111827;
-  --color-surface: #1F2937;
-  --color-surface-secondary: #374151;
-  --color-surface-hover: #374151;
-  
-  --color-border: #374151;
-  --color-border-subtle: #4B5563;
-  --color-border-focus: #10B981;
 
-  --color-text: #F9FAFB;
-  --color-text-secondary: #D1D5DB;
-  --color-text-tertiary: #9CA3AF;
-  --color-text-disabled: #4B5563;
-  --color-text-inverse: #111827;
-  
-  --shadow-xs: 0 2px 4px rgba(0, 0, 0, 0.2);
-  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
-}
 
 /* ---------- Reset & Base ---------- */
 
