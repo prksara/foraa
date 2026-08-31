@@ -19,9 +19,14 @@ import Nutrition from "./pages/Nutrition";
 import Wellness from "./pages/Wellness";
 import Settings from "./pages/Settings";
 
+import { useEffect } from "react";
+
 /** Applies the user's saved theme preference to <body>. */
 function ThemeApplier() {
   useTheme();
+  useEffect(() => {
+    document.title = "Forraa Healthcare Intelligence";
+  }, []);
   return null;
 }
 
