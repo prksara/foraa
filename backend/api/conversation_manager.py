@@ -26,12 +26,14 @@ class ConversationManager:
         )
         return result.scalars().first()
 
-    async def list_conversations(self, db: AsyncSession, user_id: str) -> List[Conversation]:
+    async def list_conversations(self, db: AsyncSession, user_id: str, include_archived: bool = False) -> List[Conversation]:
         query = (
             select(Conversation)
             .where(Conversation.user_id == user_id)
-            .order_by(desc(Conversation.updated_at))
         )
+        if not include_archived:
+            query = query.where(Conversation.is_archived == False)
+        query = query.order_by(desc(Conversation.updated_at))
         result = await db.execute(query)
         return list(result.scalars().all())
 
@@ -42,7 +44,27 @@ class ConversationManager:
             await db.commit()
             return True
         return False
-        
+
+    async def archive_conversation(self, db: AsyncSession, conv_id: str, user_id: str) -> Optional[Conversation]:
+        conv = await self.get_conversation(db, conv_id, user_id)
+        if conv:
+            conv.is_archived = True
+            conv.updated_at = datetime.datetime.utcnow()
+            await db.commit()
+            await db.refresh(conv)
+            return conv
+        return None
+
+    async def unarchive_conversation(self, db: AsyncSession, conv_id: str, user_id: str) -> Optional[Conversation]:
+        conv = await self.get_conversation(db, conv_id, user_id)
+        if conv:
+            conv.is_archived = False
+            conv.updated_at = datetime.datetime.utcnow()
+            await db.commit()
+            await db.refresh(conv)
+            return conv
+        return None
+
     async def rename_conversation(self, db: AsyncSession, conv_id: str, user_id: str, title: str) -> Optional[Conversation]:
         conv = await self.get_conversation(db, conv_id, user_id)
         if conv:

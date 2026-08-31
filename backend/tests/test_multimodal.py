@@ -39,7 +39,7 @@ def test_document_extraction_result_schema_invalid():
     with pytest.raises(ValidationError):
         DocumentExtractionResult(**invalid_data)
 
-def test_document_extractor_pdf_no_text(mocker):
+def test_document_extractor_pdf_no_text():
     # Mock OCR provider
     class MockOCR:
         def extract_text(self, b, m):

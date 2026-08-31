@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { fetchConversations, deleteConversation, updateConversation } from "../api/client";
+import { fetchConversations, deleteConversation, updateConversation, archiveConversation, unarchiveConversation } from "../api/client";
 import { useAuth } from "./AuthContext";
 
 const ChatContext = createContext(undefined);
@@ -37,6 +37,28 @@ export function ChatProvider({ children }) {
     }
   };
 
+  const handleArchiveConversation = async (id) => {
+    try {
+      const updated = await archiveConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      return updated;
+    } catch (err) {
+      console.error("Failed to archive conversation", err);
+      return false;
+    }
+  };
+
+  const handleUnarchiveConversation = async (id) => {
+    try {
+      const updated = await unarchiveConversation(id);
+      setConversations((prev) => [updated, ...prev.filter((c) => c.id !== id)]);
+      return updated;
+    } catch (err) {
+      console.error("Failed to unarchive conversation", err);
+      return false;
+    }
+  };
+
   const handleRenameConversation = async (id, title) => {
     try {
       await updateConversation(id, { title });
@@ -57,6 +79,8 @@ export function ChatProvider({ children }) {
     conversations,
     loadConversations,
     handleDeleteConversation,
+    handleArchiveConversation,
+    handleUnarchiveConversation,
     handleRenameConversation,
   };
 

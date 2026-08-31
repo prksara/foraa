@@ -6,6 +6,8 @@ import { ToastProvider } from "./contexts/ToastContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { useTheme } from "./hooks/useTheme";
 
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -17,12 +19,20 @@ import Nutrition from "./pages/Nutrition";
 import Wellness from "./pages/Wellness";
 import Settings from "./pages/Settings";
 
+/** Applies the user's saved theme preference to <body>. */
+function ThemeApplier() {
+  useTheme();
+  return null;
+}
+
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
             <ChatProvider>
+              <ThemeApplier />
+              <ErrorBoundary>
               <Routes>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
@@ -44,6 +54,7 @@ function App() {
                 {/* Catch all */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </ErrorBoundary>
             </ChatProvider>
         </ToastProvider>
       </AuthProvider>
@@ -52,3 +63,4 @@ function App() {
 }
 
 export default App;
+

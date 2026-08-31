@@ -48,6 +48,7 @@ class Conversation(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=generate_uuid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True) # Strictly required
     title: Mapped[str] = mapped_column(String, default="New Chat")
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

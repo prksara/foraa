@@ -83,6 +83,18 @@ export async function deleteConversation(id) {
   return request(`/conversations/${id}`, { method: "DELETE" });
 }
 
+export async function archiveConversation(id) {
+  return request(`/conversations/${id}/archive`, { method: "POST" });
+}
+
+export async function unarchiveConversation(id) {
+  return request(`/conversations/${id}/unarchive`, { method: "POST" });
+}
+
+export async function fetchArchivedConversations() {
+  return request("/conversations?include_archived=true");
+}
+
 // --------------------------------------------------
 // Chat
 // --------------------------------------------------
@@ -319,6 +331,10 @@ export async function updatePreferences(data) {
     method: "PUT",
     body: JSON.stringify(data),
   });
+}
+
+export async function deleteAccount() {
+  return request("/settings/account", { method: "DELETE" });
 }
 
 // Timeline

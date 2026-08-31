@@ -1,48 +1,43 @@
 import pytest
-import asyncio
 from services.health_log_parser import HealthLogParser
 
-@pytest.mark.asyncio
-async def test_health_log_parser_standard():
+def test_health_log_parser_standard():
     parser = HealthLogParser()
-    result = await parser.parse("I weigh 150 lbs today")
-    assert result["type"] == "measurement"
-    assert "weight" in result["metric_type"].lower()
-    assert result["value"] == 150
-    assert "lb" in result["unit"].lower()
+    result = parser.parse("I weigh 150 lbs today")
+    assert result is not None
+    assert result.get("category") == "measurement"
+    assert "weight" in (result.get("metric_type") or result.get("type", "")).lower()
+    assert result.get("value") == 150
+    assert "lb" in result.get("unit", "").lower()
 
-@pytest.mark.asyncio
-async def test_health_log_parser_blood_pressure():
+def test_health_log_parser_blood_pressure():
     parser = HealthLogParser()
-    result = await parser.parse("My BP is 120 over 80")
-    assert result["type"] == "measurement"
-    assert "blood_pressure" in result["metric_type"].lower()
-    assert result["value"] == 120
-    assert result["secondary_value"] == 80
+    result = parser.parse("My BP is 120 over 80")
+    assert result is not None
+    assert result.get("category") == "measurement"
+    assert "blood_pressure" in (result.get("metric_type") or result.get("type", "")).lower()
+    assert result.get("value") == 120
+    assert result.get("secondary_value") == 80
 
-@pytest.mark.asyncio
-async def test_health_log_parser_sleep():
+def test_health_log_parser_sleep():
     parser = HealthLogParser()
-    result = await parser.parse("I slept for 7.5 hours last night")
-    assert result["type"] == "lifestyle"
-    assert result["category"] == "sleep"
-    assert "7.5" in result["summary"]
+    result = parser.parse("I slept for 7.5 hours last night")
+    assert result is not None
+    assert result.get("category") == "lifestyle"
+    assert (result.get("metric_type") or result.get("type", "")).lower() == "sleep"
+    assert result.get("value") == 7.5
 
-@pytest.mark.asyncio
-async def test_health_log_parser_fake_units():
+def test_health_log_parser_fake_units():
     parser = HealthLogParser()
-    result = await parser.parse("My weight is 150 florgs")
-    # The parser might still extract it, but it should either map unit to unknown or keep florgs.
-    # The Pydantic model at runtime would fail validation if we strict checked it, but currently we just accept string units.
-    assert result["type"] == "measurement"
-    assert result["value"] == 150
-    assert result["unit"] != ""
+    result = parser.parse("My weight is 150 florgs")
+    assert result is not None
+    assert result.get("category") == "measurement"
+    assert result.get("value") == 150
+    assert result.get("unit") != ""
 
-@pytest.mark.asyncio
-async def test_health_log_parser_impossible_values():
+def test_health_log_parser_impossible_values():
     parser = HealthLogParser()
-    result = await parser.parse("My heart rate is -50 bpm")
-    # LLM should extract it
-    assert result["type"] == "measurement"
-    assert result["value"] == -50
-    # The Pydantic validation (check_value_bounds) inside api/health.py will catch this.
+    result = parser.parse("My heart rate is -50 bpm")
+    assert result is not None
+    assert result.get("category") == "measurement"
+    assert result.get("value") == -50

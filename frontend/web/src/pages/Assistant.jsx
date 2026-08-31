@@ -42,6 +42,7 @@ function Assistant() {
   const abortControllerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const currentConvIdRef = useRef(id);
 
   // Auto-scroll handling
   const scrollToBottom = () => {
@@ -54,10 +55,12 @@ function Assistant() {
 
   // Handle URL ID changes
   useEffect(() => {
-    if (id) {
+    if (id && id !== currentConvIdRef.current) {
+      currentConvIdRef.current = id;
       handleSelectConversation(id);
-    } else {
+    } else if (!id && currentConvIdRef.current !== null) {
       // New Chat state
+      currentConvIdRef.current = null;
       setMessages([]);
       setMessage("");
       setError(null);
@@ -128,6 +131,7 @@ function Assistant() {
           if (data.conversation_id && !currentConvId) {
             receivedNewConvId = data.conversation_id;
             currentConvId = data.conversation_id;
+            currentConvIdRef.current = data.conversation_id;
             // Silently update URL without triggering a remount/re-fetch
             navigate(`/assistant/${data.conversation_id}`, { replace: true });
           }

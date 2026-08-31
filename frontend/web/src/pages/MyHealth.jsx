@@ -13,6 +13,7 @@ import {
   Trash2,
   Edit2,
   Check,
+  Sun,
 } from "lucide-react";
 import Tabs from "../components/Tabs";
 import Card from "../components/Card";
@@ -29,6 +30,7 @@ const tabs = [
   { id: "conditions", label: "Conditions" },
   { id: "allergies", label: "Allergies" },
   { id: "medications", label: "Medications" },
+  { id: "lifestyle", label: "Lifestyle" },
   { id: "goals", label: "Goals" },
   { id: "measurements", label: "Measurements" },
   { id: "timeline", label: "Timeline" },
@@ -46,6 +48,7 @@ function MyHealth() {
   const [goals, setGoals] = useState([]);
   const [measurements, setMeasurements] = useState([]);
   const [timeline, setTimeline] = useState([]);
+  const [lifestyle, setLifestyle] = useState([]);
 
   // Form states (simple inline forms)
   const [showAddCondition, setShowAddCondition] = useState(false);
@@ -70,6 +73,13 @@ function MyHealth() {
 
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [newGoal, setNewGoal] = useState({ title: "", category: "general" });
+
+  const [showAddLifestyle, setShowAddLifestyle] = useState(false);
+  const [newLifestyle, setNewLifestyle] = useState({
+    category: "general",
+    summary: "",
+    details: "",
+  });
 
   // Edit states
   const [editingConditionId, setEditingConditionId] = useState(null);
@@ -99,6 +109,7 @@ function MyHealth() {
       setGoals(await api.fetchGoals());
       setMeasurements(await api.fetchMeasurements());
       setTimeline(await api.fetchTimeline());
+      setLifestyle(await api.fetchLifestyle());
     } catch (err) {
       console.error("Failed to load health data", err);
     }
@@ -174,6 +185,19 @@ function MyHealth() {
   const handleSaveGoal = async () => {
     await api.updateGoal(editingGoalId, editingGoalData);
     setEditingGoalId(null);
+    loadData();
+  };
+
+  // Lifestyle handlers
+  const handleAddLifestyle = async () => {
+    if (!newLifestyle.summary.trim()) return;
+    await api.createLifestyle(newLifestyle);
+    setNewLifestyle({ category: "general", summary: "", details: "" });
+    setShowAddLifestyle(false);
+    loadData();
+  };
+  const handleDeleteLifestyle = async (id) => {
+    await api.deleteLifestyle(id);
     loadData();
   };
 
@@ -670,8 +694,128 @@ function MyHealth() {
           )}
         </div>
       )}
+      {activeTab === "lifestyle" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "1rem",
+            }}
+          >
+            <SectionHeader title="Lifestyle" />
+            <Button variant="primary" onClick={() => setShowAddLifestyle(true)}>
+              Add Entry
+            </Button>
+          </div>
+
+          {showAddLifestyle && (
+            <div
+              style={{
+                marginBottom: "20px",
+                padding: "15px",
+                background: "var(--surface-50)",
+                borderRadius: "8px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+              }}
+            >
+              <select
+                value={newLifestyle.category}
+                onChange={(e) =>
+                  setNewLifestyle({ ...newLifestyle, category: e.target.value })
+                }
+                style={{ padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+              >
+                {["sleep", "exercise", "nutrition", "smoking", "alcohol", "caffeine", "occupation", "general"].map((cat) => (
+                  <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="Summary (e.g., Exercise 30 min daily)"
+                value={newLifestyle.summary}
+                onChange={(e) =>
+                  setNewLifestyle({ ...newLifestyle, summary: e.target.value })
+                }
+                style={{ padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+              />
+              <input
+                type="text"
+                placeholder="Additional details (optional)"
+                value={newLifestyle.details}
+                onChange={(e) =>
+                  setNewLifestyle({ ...newLifestyle, details: e.target.value })
+                }
+                style={{ padding: "8px", borderRadius: "6px", border: "1px solid var(--border)" }}
+              />
+              <div style={{ display: "flex", gap: "10px" }}>
+                <Button onClick={handleAddLifestyle}>Save</Button>
+                <Button variant="ghost" onClick={() => setShowAddLifestyle(false)}>Cancel</Button>
+              </div>
+            </div>
+          )}
+
+          {lifestyle.length === 0 ? (
+            <EmptyState
+              icon={<Sun size={24} />}
+              title="No lifestyle entries"
+              description="Track your sleep, exercise, nutrition, and other habits."
+            />
+          ) : (
+            <ul style={{ listStyle: "none", padding: 0 }}>
+              {lifestyle.map((item) => (
+                <li
+                  key={item.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    padding: "12px 0",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <div>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "2px 8px",
+                        borderRadius: "99px",
+                        background: "var(--accent-50)",
+                        color: "var(--accent)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        marginRight: "10px",
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {item.category}
+                    </span>
+                    <strong>{item.summary}</strong>
+                    {item.details && (
+                      <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "13px" }}>
+                        {item.details}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleDeleteLifestyle(item.id)}
+                    style={{ color: "var(--danger)" }}
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {activeTab === "goals" && (
+
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <div
             style={{

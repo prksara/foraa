@@ -17,6 +17,7 @@ import {
   Trash2,
   Edit2,
   Search,
+  Archive,
 } from "lucide-react";
 import MobileNav from "./MobileNav";
 import QuickAddLog from "./QuickAddLog";
@@ -32,9 +33,48 @@ const mainNav = [
   { name: "Wellness", path: "/wellness", icon: Sun },
 ];
 
+/**
+ * Groups conversations into Today, Yesterday, This Week, and Older buckets.
+ */
+function groupConversationsByDate(conversations) {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfYesterday = new Date(startOfToday);
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+  const startOfWeek = new Date(startOfToday);
+  startOfWeek.setDate(startOfWeek.getDate() - 6);
+
+  const groups = {
+    Today: [],
+    Yesterday: [],
+    "This Week": [],
+    Older: [],
+  };
+
+  conversations.forEach((conv) => {
+    const date = new Date(conv.updated_at);
+    if (date >= startOfToday) {
+      groups.Today.push(conv);
+    } else if (date >= startOfYesterday) {
+      groups.Yesterday.push(conv);
+    } else if (date >= startOfWeek) {
+      groups["This Week"].push(conv);
+    } else {
+      groups.Older.push(conv);
+    }
+  });
+
+  return groups;
+}
+
 function Layout() {
   const { user, signOut } = useAuth();
-  const { conversations, handleDeleteConversation, handleRenameConversation } = useChat();
+  const {
+    conversations,
+    handleDeleteConversation,
+    handleRenameConversation,
+    handleArchiveConversation,
+  } = useChat();
   const navigate = useNavigate();
   const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -82,10 +122,85 @@ function Layout() {
     }
   };
 
+  const onArchiveClick = async (e, convId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const result = await handleArchiveConversation(convId);
+    if (result && location.pathname === `/assistant/${convId}`) {
+      navigate("/assistant", { replace: true });
+    }
+  };
+
   const isAssistantActive = location.pathname.startsWith("/assistant");
 
-  const sortedConversations = [...conversations].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-  const filteredConversations = sortedConversations.filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase()));
+  const sortedConversations = [...conversations].sort(
+    (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
+  );
+  const filteredConversations = sortedConversations.filter((c) =>
+    c.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const grouped = groupConversationsByDate(filteredConversations);
+  const groupOrder = ["Today", "Yesterday", "This Week", "Older"];
+
+  const renderConvItem = (conv) => (
+    <NavLink
+      key={conv.id}
+      to={`/assistant/${conv.id}`}
+      className={({ isActive }) =>
+        `sidebar-subnav-item${isActive ? " active" : ""}`
+      }
+    >
+      <MessageSquare size={14} className="subnav-icon" />
+      {editingConvId === conv.id ? (
+        <input
+          autoFocus
+          className="subnav-title-input"
+          value={editTitle}
+          onChange={(e) => setEditTitle(e.target.value)}
+          onBlur={() => handleRenameSubmit(conv.id)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleRenameSubmit(conv.id);
+            if (e.key === "Escape") setEditingConvId(null);
+          }}
+          onClick={(e) => e.preventDefault() || e.stopPropagation()}
+        />
+      ) : (
+        <span className="subnav-title">{conv.title}</span>
+      )}
+
+      {!editingConvId && (
+        <div className="subnav-actions">
+          <button
+            className="subnav-action-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setEditingConvId(conv.id);
+              setEditTitle(conv.title);
+            }}
+            title="Rename chat"
+          >
+            <Edit2 size={12} />
+          </button>
+          <button
+            className="subnav-action-btn"
+            onClick={(e) => onArchiveClick(e, conv.id)}
+            title="Archive chat"
+          >
+            <Archive size={12} />
+          </button>
+          <button
+            className="subnav-action-btn delete-btn"
+            onClick={(e) => onDeleteClick(e, conv.id)}
+            title="Delete chat"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
+      )}
+    </NavLink>
+  );
 
   return (
     <div className={`app-shell ${isCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -159,7 +274,7 @@ function Layout() {
               {/* Submenu for Assistant */}
               {item.path === "/assistant" && isAssistantActive && !isCollapsed && (
                 <div className="sidebar-subnav">
-                  <button 
+                  <button
                     className="sidebar-new-chat-btn"
                     onClick={() => navigate("/assistant")}
                   >
@@ -168,68 +283,29 @@ function Layout() {
                   </button>
 
                   <div className="sidebar-subnav-list">
-                    <span className="sidebar-subnav-label">RECENT</span>
                     <div className="sidebar-search">
                       <Search size={14} className="sidebar-search-icon" />
-                      <input 
-                        type="text" 
-                        placeholder="Search chats..." 
+                      <input
+                        type="text"
+                        placeholder="Search chats..."
                         className="sidebar-search-input"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                       />
                     </div>
-                    {filteredConversations.map((conv) => (
-                      <NavLink
-                        key={conv.id}
-                        to={`/assistant/${conv.id}`}
-                        className={({ isActive }) =>
-                          `sidebar-subnav-item${isActive ? " active" : ""}`
-                        }
-                      >
-                        <MessageSquare size={14} className="subnav-icon" />
-                        {editingConvId === conv.id ? (
-                          <input
-                            autoFocus
-                            className="subnav-title-input"
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            onBlur={() => handleRenameSubmit(conv.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleRenameSubmit(conv.id);
-                              if (e.key === "Escape") setEditingConvId(null);
-                            }}
-                            onClick={(e) => e.preventDefault() || e.stopPropagation()}
-                          />
-                        ) : (
-                          <span className="subnav-title">{conv.title}</span>
-                        )}
 
-                        {!editingConvId && (
-                          <div className="subnav-actions">
-                            <button
-                              className="subnav-action-btn"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setEditingConvId(conv.id);
-                                setEditTitle(conv.title);
-                              }}
-                              title="Rename chat"
-                            >
-                              <Edit2 size={12} />
-                            </button>
-                            <button
-                              className="subnav-action-btn delete-btn"
-                              onClick={(e) => onDeleteClick(e, conv.id)}
-                              title="Delete chat"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        )}
-                      </NavLink>
-                    ))}
+                    {/* Grouped conversations */}
+                    {groupOrder.map((group) => {
+                      const groupConvs = grouped[group];
+                      if (!groupConvs || groupConvs.length === 0) return null;
+                      return (
+                        <div key={group}>
+                          <span className="sidebar-subnav-label">{group.toUpperCase()}</span>
+                          {groupConvs.map(renderConvItem)}
+                        </div>
+                      );
+                    })}
+
                     {filteredConversations.length === 0 && (
                       <div className="sidebar-subnav-empty">No recent chats</div>
                     )}

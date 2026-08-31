@@ -162,6 +162,18 @@ function Settings() {
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (window.confirm("Are you sure you want to PERMANENTLY DELETE your account and all associated health records? This action CANNOT be undone.")) {
+      try {
+        await api.deleteAccount();
+        success("Account successfully deleted");
+        window.location.href = "/login";
+      } catch (e) {
+        error("Failed to delete account");
+      }
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-header">
@@ -310,12 +322,15 @@ function Settings() {
               
               <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid var(--border)" }}>
                 <h4 style={{ marginBottom: "10px", fontSize: "14px", color: "var(--text-primary)" }}>Data Management</h4>
-                <div style={{ display: "flex", gap: "10px" }}>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                   <button className="btn btn--secondary" onClick={handleExportData}>
                     Export Data
                   </button>
                   <button className="btn btn--danger" onClick={handleDeleteAllData}>
                     Delete All Data
+                  </button>
+                  <button className="btn btn--danger" style={{ background: "transparent", border: "1px solid var(--color-error, #c0392b)", color: "var(--color-error, #c0392b)" }} onClick={handleDeleteAccount}>
+                    Delete Account
                   </button>
                 </div>
               </div>

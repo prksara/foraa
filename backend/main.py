@@ -77,12 +77,23 @@ app = FastAPI(
 # CORS
 # --------------------------------------------------
 
+import os
+_env_cors = os.getenv("CORS_ORIGINS", "")
+_allowed_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+if _env_cors:
+    for origin in _env_cors.split(","):
+        o = origin.strip()
+        if o and o not in _allowed_origins:
+            _allowed_origins.append(o)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -126,6 +137,7 @@ class MessageSchema(BaseModel):
 class ConversationSchema(BaseModel):
     id: str
     title: str
+    is_archived: bool = False
     created_at: datetime
     updated_at: datetime
     messages: List[MessageSchema] = Field(default_factory=list)
@@ -164,19 +176,20 @@ async def health():
         "status": "ok",
     }
 
-app.include_router(health_router, prefix="/api")
-app.include_router(reports_router, prefix="/api")
-app.include_router(settings_router, prefix="/api")
+app.include_router(health_router)
+app.include_router(reports_router)
+app.include_router(settings_router)
 
 
 # Conversation Management Routes
 
 @app.get("/conversations", response_model=List[ConversationSchema])
 async def list_conversations(
+    include_archived: bool = False,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
-    return await conv_manager.list_conversations(db, user_id=user.id)
+    return await conv_manager.list_conversations(db, user_id=user.id, include_archived=include_archived)
 
 @app.post("/conversations", response_model=ConversationSchema)
 async def create_conversation(
@@ -217,6 +230,28 @@ async def delete_conversation(
     if not await conv_manager.delete_conversation(db, conv_id, user_id=user.id):
         raise HTTPException(status_code=404, detail="Conversation not found or unauthorized")
     return {"status": "deleted"}
+
+@app.post("/conversations/{conv_id}/archive", response_model=ConversationSchema)
+async def archive_conversation(
+    conv_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    conv = await conv_manager.archive_conversation(db, conv_id, user_id=user.id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found or unauthorized")
+    return conv
+
+@app.post("/conversations/{conv_id}/unarchive", response_model=ConversationSchema)
+async def unarchive_conversation(
+    conv_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    conv = await conv_manager.unarchive_conversation(db, conv_id, user_id=user.id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found or unauthorized")
+    return conv
 
 
 # Chat Routes
@@ -422,9 +457,17 @@ async def chat_stream(
                     except asyncio.TimeoutError:
                         continue
                         
-                # 3.5 Run memory extraction in background task
+                # 3.5 Run memory extraction in background task (only if user enabled AI data preferences)
                 async def background_memory_extraction(msg_content, uid, msg_id):
                     async for safe_db in get_db():
+                        from database.models import UserPreferences
+                        from sqlalchemy import select
+                        pref_res = await safe_db.execute(select(UserPreferences).where(UserPreferences.user_id == uid))
+                        prefs = pref_res.scalars().first()
+                        if prefs and not prefs.ai_data_pref:
+                            logger.info(f"User {uid} opted out of AI memory extraction. Skipping.")
+                            break
+
                         extractor = MemoryExtractor(service)
                         await extractor.extract_health_events(msg_content, uid, msg_id, safe_db)
                         break

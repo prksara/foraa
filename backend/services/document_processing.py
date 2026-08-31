@@ -3,7 +3,7 @@ import io
 import json
 import base64
 from abc import ABC, abstractmethod
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF (replaces deprecated `import fitz`)
 from PIL import Image
 import pytesseract
 from multimodal.schemas import DocumentExtractionResult
